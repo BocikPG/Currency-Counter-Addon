@@ -1,0 +1,97 @@
+{
+  "Aberrant Fossil": [
+    "More Chaos modifiers",
+    "No Lightning modifiers"
+  ],
+  "Aetheric Fossil": [
+    "More Caster modifiers",
+    "Fewer Attack modifiers"
+  ],
+  "Bloodstained Fossil": [
+    "Corrupted",
+    "Has a Corrupted implicit modifier"
+  ],
+  "Bound Fossil": [
+    "More Minion, Aura or Curse modifiers"
+  ],
+  "Corroded Fossil": [
+    "More Physical Ailment or Chaos Ailment modifiers",
+    "No Elemental modifiers"
+  ],
+  "Deft Fossil": [
+    "More Critical modifiers",
+    "No Attribute modifiers"
+  ],
+  "Dense Fossil": [
+    "More Defence modifiers",
+    "No Life Modifiers"
+  ],
+  "Faceted Fossil": [
+    "More Gem modifiers"
+  ],
+  "Fractured Fossil": [
+    "Creates a split copy",
+    "Cannot be used to split Influenced, Enchanted, Fractured, or Synthesised items"
+  ],
+  "Frigid Fossil": [
+    "More Cold modifiers",
+    "No Fire modifiers"
+  ],
+  "Fundamental Fossil": [
+    "More Attribute modifiers",
+    "No Critical modifiers"
+  ],
+  "Gilded Fossil": [
+    "Item is overvalued by vendors"
+  ],
+  "Glyphic Fossil": [
+    "Has a Corrupt Essence modifier"
+  ],
+  "Hollow Fossil": [
+    "Has an Abyssal socket"
+  ],
+  "Jagged Fossil": [
+    "More Physical modifiers",
+    "No Chaos modifiers"
+  ],
+  "Lucent Fossil": [
+    "More Mana modifiers",
+    "No Speed modifiers"
+  ],
+  "Metallic Fossil": [
+    "More Lightning modifiers",
+    "No Physical modifiers"
+  ],
+  "Opulent Fossil": [
+    "More Drop modifiers",
+    "No Tagless modifiers"
+  ],
+  "Prismatic Fossil": [
+    "More Elemental modifiers",
+    "No Physical Ailment or Chaos Ailment modifiers"
+  ],
+  "Pristine Fossil": [
+    "More Life modifiers",
+    "No Defence modifiers"
+  ],
+  "Sanctified Fossil": [
+    "Numeric modifier values are lucky",
+    "High Level modifiers are more common"
+  ],
+  "Scorched Fossil": [
+    "More Fire modifiers",
+    "No Cold modifiers"
+  ],
+  "Serrated Fossil": [
+    "More Attack modifiers",
+    "Fewer Caster modifiers"
+  ],
+  "Shuddering Fossil": [
+    "More Speed modifiers",
+    "No Mana modifiers"
+  ],
+  "Tangled Fossil": [
+    "Makes a random modifier type much more likely and prevents another random modifier type",
+    "Effects revealed once resonator is fully socketed"
+  ]
+}

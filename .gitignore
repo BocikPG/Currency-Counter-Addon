@@ -1,0 +1,22 @@
+# local folders created by the tool on startup/demand
+cheat-sheets/
+cheat-sheets 2/*
+!cheat-sheets 2/?sample?*
+exports/
+ini/
+ini?2/
+update/
+
+# custom, user-defined hotkeys
+modules/hotkeys?custom*
+
+# sub-folders/files within img, created on demand
+img/recognition*/
+img/GUI/skill-tree*/
+img/GUI/vaal street*/
+img/*.json
+img/*.jpg
+
+.vscode
+
+config.ini

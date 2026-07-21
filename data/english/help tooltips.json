@@ -1,0 +1,98 @@
+{
+  "settings": {
+    "currency_counter enable": [
+      "tracks how many of each currency you use during a session",
+      "It tracks right/left clicks on currency and items to count how many you use",
+      "It accepts custom entries as well",
+      "It also allows you to set manual prices for currencies and items, and calculates the total value of your used currency based on that"
+    ],
+    "currency_counter ssf": [
+      "solo self-found mode: hides the price and total columns",
+      "also changes the default number of visible session tabs to 2"
+    ],
+    "currency_counter max rows": [
+      "the maximum number of currencies that are displayed"
+    ],
+    "currency_counter font-size": [
+      "– and + can be held down, the middle button resets the size"
+    ],
+    "currency_counter spacing": [
+      "pixel gap between session tabs in the bar",
+      "clamped between 2 and 20",
+      "– and + can be held down, the middle button resets the size"
+    ],
+    "currency_counter visible sessions": [
+      "how many session tabs are shown at once in the bar",
+      "scroll the mouse wheel over the tabs to cycle through the rest",
+      "clamped between 1 and 8",
+      "default is 2 in ssf mode, 4 otherwise",
+      "– and + can be held down, the middle button resets the size"
+    ],
+    "currency_counter ninja stale": [
+      "how many hours must pass without a manual price update before poe.ninja prices are used as a fallback",
+      "orange price = sourced from poe.ninja; brown total = ninja-sourced item total",
+      "clamped between 1 and 24 hours"
+    ],
+    "currency_counter ninja": [
+      "uses poe.ninja prices as a fallback when a currency has no manual price, or its price is older than the staleness threshold",
+      "orange price = poe.ninja source; brown total = ninja-sourced item total",
+      "requires the stash-ninja feature to be enabled(/highlight)"
+    ],
+    "currency_counter price warn": [
+      "after this many hours, a manually-entered price starts turning yellow as a warning",
+      "must be lower than the stale threshold",
+      "click the value to reset to the default (3h)"
+    ],
+    "currency_counter price stale": [
+      "after this many hours, a manually-entered price turns red — considered too old to be reliable",
+      "must be higher than the warning threshold",
+      "click the value to reset to the default (6h)"
+    ],
+    "currency_counter rate warn": [
+      "after this many hours, the chaos/exalt exchange ratio starts turning yellow as a warning",
+      "exchange rates tend to be more stable than prices, so this can usually be set higher",
+      "click the value to reset to the default (3h)"
+    ],
+    "currency_counter rate stale": [
+      "after this many hours, the exchange rate turns red — considered too old to trust for conversions",
+      "click the value to reset to the default (6h)"
+    ]
+  },
+  "cclogs": {
+    "add session": [
+      "creates a new tracking session",
+      "scroll the mouse wheel over the session tabs to cycle through them when more tabs exist than the visible limit"
+    ],
+    "del btn": [
+      "deletes the current session",
+      "click once to be asked for confirmation, then click again within 3 seconds to confirm",
+      "cannot delete the last remaining session"
+    ],
+    "accept btn": [
+      "saves the session name typed in the edit field to the left"
+    ],
+    "ninja fetch": [
+      "manually triggers a poe.ninja price fetch for all tracked stash tabs",
+      "tabs that were fetched recently (within ~1 hour) are skipped automatically",
+      "prices show in orange when sourced from poe.ninja; totals show in yellow when at least one item uses a ninja price"
+    ],
+    "ratio chaos": [
+      "click to set the chaos → divine exchange rate",
+      "enter the value as a decimal (e.g. 200) or a fraction (e.g. 200/1)",
+      "the rate is used to convert prices and totals into your chosen display currency"
+    ],
+    "ratio exalt": [
+      "click to set the exalt → divine exchange rate",
+      "enter the value as a decimal or a fraction (e.g. 150/1)",
+      "the rate is used to convert prices and totals into your chosen display currency"
+    ],
+    "add currency": [
+      "adds the text in the search box as a new custom currency entry with a count of 1",
+      "click once to be asked for confirmation, then click again within 3 seconds to confirm",
+      "if the currency already exists but has a count of 0, it is reset to 1 instead"
+    ],
+    "filter reset": [
+      "clears the search filter and shows all tracked currencies"
+    ]
+  }
+}

@@ -1,0 +1,41 @@
+;#####################################################
+;## settings menu: currency-counter
+;#####################################################
+
+		ms_currency-counter		=	"currency counter"
+
+;## these strings are displayed/required in the "currency-counter" section of the settings menu
+		m_cc_enable				=	"enable the currency counter feature"
+		m_cc_ssf				=	"SSF (Solo Self-Found) mode"
+		m_cc_tab_spacing		=	"tab spacing:"
+		m_cc_visible_sessions	=	"visible sessions:"
+		m_cc_ninja_section		=	"poe.ninja:"
+		m_cc_ninja_prices		=	"use poe.ninja prices as fallback"
+		m_cc_ninja_stale		=	"use ninja price after (h):"
+
+;## currency counter viewer window strings
+		m_cc_window_title		=	"Currency Counter Viewer"
+		m_cc_window_bar			=	"Currency Counter"
+		m_cc_session_label		=	"Session:"
+		m_cc_col_currency		=	"Currency"
+		m_cc_col_count			=	"Count"
+		m_cc_col_price			=	"Price (ea)"
+		m_cc_col_in				=	"In"
+		m_cc_col_updated		=	"Updated"
+		m_cc_col_total			=	"Total"
+
+;## currency abbreviations
+		m_cc_abbr_divine		=	"d"
+		m_cc_abbr_chaos			=	"c"
+		m_cc_abbr_exalt			=	"e"
+
+;## currency counter tooltips / confirmations
+		m_cc_confirm_add_pre	=	"are you sure you want to add"
+		m_cc_confirm_add_post	=	"as a new currency?"
+		m_cc_confirm_delete		=	"are you sure you want to delete this session?"
+		m_cc_error_last_session	=	"cannot delete the only session."
+		m_cc_max_rows			=	"max table rows:"
+		m_cc_price_age			=	"price age (h):"
+		m_cc_rate_age			=	"ratio age (h):"
+		m_cc_age_warn			=	"warn:"
+		m_cc_age_stale			=	"stale:"
