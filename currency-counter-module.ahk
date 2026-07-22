@@ -14,12 +14,20 @@ Class CurrencyCounterAddon
 		this.settings.fSize := (ini.UI.font ? ini.UI.font : settings.general.fSize)
 		LLK_FontDimensions(this.settings.fSize, h, w), this.settings.fWidth := w, this.settings.fHeight := h ; get approx. dimensions for font width and height (optional)
 		this.settings.hotkey_stats := ini.settings["hotkey stats"]
+		this.settings.hotkey_stats := "F6" ; TEMP: force-bind for CurrencyCounter_HorticraftingClick() testing, remove later
 		this.Init()
 	}
 
 	Hotkeys() ; called when a customizable hotkey is pressed
 	{
-
+		global vars, settings
+		hotkey := (StrLen(A_ThisHotkey) > 1 ? LTrim(A_ThisHotkey, "~!+#^") : A_ThisHotkey) ; remove key-modifiers (if needed)
+		Switch GetKeyName(hotkey)
+		{
+			Case "F6": ; TEMP: manual trigger for CurrencyCounter_HorticraftingClick() testing
+				CurrencyCounter_HorticraftingClick()
+		}
+		KeyWait, % hotkey ; wait until the hotkey is released (prevents continuous function call)
 	}
 
     Init()
@@ -79,6 +87,9 @@ LButton::CurrencyCounter_Logs2(vars.general.cMouse)
 
 #If settings.features.currency_counter && (vars.general.wMouse = vars.hwnd.poe_client) && vars.currency_counter.picked
 ~*LButton::CurrencyCounter_LClick()
+
+#If vars.hwnd.currency_counter_horticrafting.main
+~LButton::CurrencyCounter_HorticraftingCraftClick()
 
 ; ──────────────────────────────────────────────────────────────
 ;  Init
@@ -159,20 +170,6 @@ Init_currency_counter()
     }
 
     ; Horticrafting station screen-check – reuses the existing image-check
-    ; machinery from screen-checks.ahk (vars.imagesearch + Screenchecks_
-    ; ImageSearch()) instead of duplicating that logic here. Registering
-    ; it into vars.imagesearch.list/.search also means it shows up in the
-    ; existing screen-check settings menu for calibration, same as any
-    ; other check – no separate calibration code needed in this module.
-    ;
-    ; NOTE: this still needs a reference image at
-    ;   img\Recognition (<height>p)\GUI\horticrafting<poe_version>.bmp
-    ; captured once through that existing calibration UI. checks.x/y/w/h
-    ; below was measured on a 1920x1080 screenshot ("HORTIC" out of the
-    ; "HORTICRAFTING" title, x1 483 y1 183 x2 568 y2 213) and is expressed
-    ; as a fraction of vars.client.h (same scaling convention as e.g.
-    ; runeshaping/runeshaping2 below) so it lands in the right spot at
-    ; any resolution, not just 1080p.
     ini_sc := IniBatchRead("ini" vars.poe_version "\screen checks (" vars.client.h "p).ini")
     vars.imagesearch.list.horticrafting := 1
     If !LLK_HasVal(vars.imagesearch.search, "horticrafting")
@@ -181,9 +178,63 @@ Init_currency_counter()
     vars.imagesearch.horticrafting := {"check": 0, "x1": parse.1, "y1": parse.2, "x2": parse.3, "y2": parse.4}
     vars.imagesearch.checks.horticrafting := {"x": Round(vars.client.h * (483/1080)), "y": Round(vars.client.h * (183/1080)), "w": Round(vars.client.h * (85/1080)), "h": Round(vars.client.h * (30/1080))}
 
+    ; Horticrafting lifeforce labels – named in row order as they appear
+    ; in the station's stock panel (see CurrencyCounter_HorticraftingOverlay()).
+    ; They don't go through the normal RClick/LClick pick-up flow (the
+    ; station consumes them internally), so seed a sensible starting
+    ; count the first time each is seen instead of starting at 0.
+    vars.currency_counter.horticrafting_lifeforces := ["WILD CRYSTALLISED LIFEFORCE", "VIVID CRYSTALLISED LIFEFORCE", "PRIMAL CRYSTALLISED LIFEFORCE", "SACRED CRYSTALLISED LIFEFORCE", "CRYSTALLISED RANCOUR"]
+    horticrafting_defaults := {"WILD CRYSTALLISED LIFEFORCE": 50, "VIVID CRYSTALLISED LIFEFORCE": 50, "PRIMAL CRYSTALLISED LIFEFORCE": 50, "SACRED CRYSTALLISED LIFEFORCE": 1, "CRYSTALLISED RANCOUR": 1}
+    For name, default_count in horticrafting_defaults
+        If !IsObject(vars.currency_counter.currencies[name])
+            vars.currency_counter.currencies[name] := {"count": default_count, "price": 0.0, "price_currency": "exalt", "price_updated": 0}
+
+    ; 2-character abbreviations used for the small clickable label boxes
+    vars.currency_counter.horticrafting_abbr := {"WILD CRYSTALLISED LIFEFORCE": "WI", "VIVID CRYSTALLISED LIFEFORCE": "VI", "PRIMAL CRYSTALLISED LIFEFORCE": "PR", "SACRED CRYSTALLISED LIFEFORCE": "SA", "CRYSTALLISED RANCOUR": "RA"}
+
+    ; WILD/VIVID/PRIMAL are mutually exclusive - only one of these three can be active at a time. 
+    vars.currency_counter.horticrafting_exclusive := ["WILD CRYSTALLISED LIFEFORCE", "VIVID CRYSTALLISED LIFEFORCE", "PRIMAL CRYSTALLISED LIFEFORCE"]
+
+    ; Active/inactive toggle state per lifeforce label
+    vars.currency_counter.horticrafting_active := {"WILD CRYSTALLISED LIFEFORCE": 1, "VIVID CRYSTALLISED LIFEFORCE": 0, "PRIMAL CRYSTALLISED LIFEFORCE": 0, "SACRED CRYSTALLISED LIFEFORCE": 0, "CRYSTALLISED RANCOUR": 0}
+
+    ; Editable copy of horticrafting_defaults shown/edited in the amount
+    ; fields next to each label; kept separate so the original defaults
+    ; stay available as a reset point later if needed.
+    vars.currency_counter.horticrafting_defaults := horticrafting_defaults
+    vars.currency_counter.horticrafting_amounts := horticrafting_defaults.Clone()
+
+	; ─── Horticrafting overlay layout (scaled once at init) ───
+	; All coordinates measured on 1920x1080 as fractions of vars.client.h.
+	vars.currency_counter.horticrafting_layout := {}
+
+	; Row Y positions for each lifeforce (row1..row5)
+	rows_y := [351, 410, 469, 528, 587]
+	vars.currency_counter.horticrafting_layout.rows_y := []
+	For i, y in rows_y
+	    vars.currency_counter.horticrafting_layout.rows_y.Push(Round(vars.client.h * (y / 1080)))
+
+	; Label (abbreviation) position
+	vars.currency_counter.horticrafting_layout.xLabel := Round(vars.client.h * (1165 / 1080))
+	vars.currency_counter.horticrafting_layout.wLabel := Round(vars.client.h * (24 / 1080))
+	vars.currency_counter.horticrafting_layout.hLabel := Round(vars.client.h * (22 / 1080))
+
+	; Amount Edit field position (right of label)
+	layout := vars.currency_counter.horticrafting_layout
+	layout.xAmount := layout.xLabel + layout.wLabel + Round(vars.client.h * (1 / 1080))
+	layout.wAmount := Round(vars.client.h * (60 / 1080))
+	layout.hAmount := layout.hLabel
+
+	; CRAFT button rectangle (used for the hotkey and the visual frame)
+	layout.craft_rect := {}
+	layout.craft_rect.x := Round(vars.client.h * (896 / 1080))
+	layout.craft_rect.y := Round(vars.client.h * (585 / 1080))
+	layout.craft_rect.w := Round(vars.client.h * (142 / 1080))
+	layout.craft_rect.h := Round(vars.client.h * (44 / 1080))
+
     vars.hwnd.currency_counter := {"main": "", "drag": ""}
     vars.hwnd.currency_counter_table := {"main": ""}
-    vars.hwnd.currency_counter_horticrafting := {"main": ""}
+    vars.hwnd.currency_counter_horticrafting := {"main": "", "craft": "", "labels": {}, "label_bg": {}, "amounts": {}}
     vars.cc_logs := {"sort_col": "", "sort_asc": 1, "x": settings.currency_counter.logs_x, "y": settings.currency_counter.logs_y, "keywords": {}}
 
     CurrencyCounter_UpdateExaltRate()
@@ -385,13 +436,34 @@ CurrencyCounter_IsGroupable(name)
 ;  overlay; otherwise it does nothing.
 ; ──────────────────────────────────────────────────────────────
 
-; Full-screen click-through overlay covering the game client, toggled
-; on/off each call. Currently empty – controls get added later.
-CurrencyCounter_HorticraftingOverlay()
+; Full-screen overlay covering the game client, toggled on/off each
+; call. Unlike a typical click-through overlay, this one is a normal
+; interactive window - clicking the lifeforce labels toggles them
+; active/inactive, and the amount fields are real editable text boxes.
+; Only the CRAFT highlight button forwards its click through to the
+; real button underneath (see CurrencyCounter_HorticraftingCraftClick(),
+; which does that via ControlClick straight to the game window rather
+; than relying on the overlay being click-through).
+;
+; All coordinates were measured on a 1920x1080 screenshot and are
+; expressed as a fraction of vars.client.h so they scale to any
+; resolution, same convention as the screen-check region above.
+CurrencyCounter_HorticraftingOverlay(mode := "toggle")
 {
     local
     global vars, settings
     static hwnd_overlay := 0
+
+	If (mode = "destroy")
+	{
+		If hwnd_overlay && WinExist("ahk_id " hwnd_overlay)
+		{
+			LLK_Overlay(hwnd_overlay, "destroy")
+			Gui, currency_counter_horticrafting: Destroy
+		}
+		hwnd_overlay := 0
+		Return
+	}
 
     If hwnd_overlay && WinExist("ahk_id " hwnd_overlay)
     {
@@ -400,17 +472,154 @@ CurrencyCounter_HorticraftingOverlay()
         hwnd_overlay := 0
         Return
     }
-
-    Gui, currency_counter_horticrafting: New, % "-Caption -DPIScale +LastFound +AlwaysOnTop +ToolWindow +E0x20 +E0x02000000 +E0x00080000 HWNDhwnd_overlay"
+	
+    Gui, currency_counter_horticrafting: New, % "-Caption -DPIScale +LastFound +AlwaysOnTop +ToolWindow +E0x02000000 +E0x00080000 HWNDhwnd_overlay"
     Gui, currency_counter_horticrafting: Color, Purple
     WinSet, TransColor, Purple
     Gui, currency_counter_horticrafting: Margin, 0, 0
+    Gui, currency_counter_horticrafting: Font, % "s" Round(11 * (vars.client.h / 1080)) " cWhite", Arial
+	
+	layout := vars.currency_counter.horticrafting_layout
+	
+    ; ── Lifeforce labels + amount fields ──
+    labels := {}, label_bg := {}, amounts := {}
+    For i, name in vars.currency_counter.horticrafting_lifeforces
+    {
+        yRow := layout.rows_y[i]
+        active := vars.currency_counter.horticrafting_active[name]
 
-    ; Currently empty – overlay content to be added in a later pass.
+        Gui, currency_counter_horticrafting: Add, Text, % "x" layout.xLabel " y" yRow " w" layout.wLabel " h" layout.hLabel " BackgroundTrans Border Center gCurrencyCounter_HorticraftingLabelClick HWNDhwnd", % vars.currency_counter.horticrafting_abbr[name]
+        labels[name] := hwnd
+        Gui, currency_counter_horticrafting: Add, Progress, % "xp yp wp hp HWNDhwnd Disabled Background" (active ? "41BB1C" : "Black"), 0
+        label_bg[name] := hwnd
+
+        Gui, currency_counter_horticrafting: Add, Edit, % "x" layout.xAmount - 2 " y" yRow " w" layout.wAmount " h" layout.hAmount " Number Center Background1A1A1A cBlack gCurrencyCounter_HorticraftingAmountChange HWNDhwnd", % vars.currency_counter.horticrafting_amounts[name]
+        amounts[name] := hwnd
+    }
+
+    ; ── CRAFT button (visual frame + transparent clickable area) ──
+    xC := layout.craft_rect.x, yC := layout.craft_rect.y, wC := layout.craft_rect.w, hC := layout.craft_rect.h
+    craftAccent := "41BB1C"
+
+    ; Inner punch-through (Purple = transparent)
+    Gui, currency_counter_horticrafting: Add, Text, % "BackgroundTrans Border x" xC + 4 " y" yC + 4 " w" wC - 8 " h" hC - 8
+    Gui, currency_counter_horticrafting: Add, Progress, % "Disabled xp yp wp hp HWNDhwnd BackgroundPurple", 0
+
+    ; Outer accent border
+    Gui, currency_counter_horticrafting: Add, Text, % "BackgroundTrans Border x" xC " y" yC " w" wC " h" hC
+    Gui, currency_counter_horticrafting: Add, Progress, % "Disabled xp yp wp hp HWNDhwnd Background" craftAccent, 0
+
+    ; Transparent clickable area (no g‑label; the hotkey handles clicks)
+    Gui, currency_counter_horticrafting: Add, Text, % "x" xC " y" yC " w" wC " h" hC " BackgroundTrans HWNDhwnd_craft", % " "
 
     Gui, currency_counter_horticrafting: Show, % "NA x" vars.client.x " y" vars.client.y " w" vars.client.w " h" vars.client.h
-    vars.hwnd.currency_counter_horticrafting := {"main": hwnd_overlay}
+    vars.hwnd.currency_counter_horticrafting := {"main": hwnd_overlay, "craft": hwnd_craft, "labels": labels, "label_bg": label_bg, "amounts": amounts}
     LLK_Overlay(hwnd_overlay, "show", 0, "currency_counter_horticrafting")
+}
+
+; Fired by the CRAFT highlight button (native click - the overlay is no
+; longer click-through). Does the craft bookkeeping first, then forwards
+; the click straight to the real CRAFT button underneath by sending it
+; directly to the game window (no real cursor movement involved, so it
+; works regardless of what's on top on screen).
+CurrencyCounter_HorticraftingCraftClick(cHWND := 0)
+{
+    global vars, settings
+
+    ; ── Get current cursor position (screen coordinates) ──
+    MouseGetPos, mouseX, mouseY
+
+    ; ── Retrieve the craft button rectangle (stored in vars) ──
+    rect := vars.currency_counter.horticrafting_layout.craft_rect   
+
+    ; ── Check if cursor is inside the button area ──
+    If (mouseX < vars.client.x + rect.x)
+        || (mouseX > vars.client.x + rect.x + rect.w)
+        || (mouseY < vars.client.y + rect.y)
+        || (mouseY > vars.client.y + rect.y + rect.h)
+        Return   ; not on the craft button – ignore
+
+
+    ; --- Add counts from active lifeforce labels to the session ---
+    For i, name in vars.currency_counter.horticrafting_lifeforces
+    {
+        If vars.currency_counter.horticrafting_active[name]
+        {
+            amount := vars.currency_counter.horticrafting_amounts[name] + 0   ; force number
+            If (amount > 0)
+            {
+                ; Ensure currency entry exists
+                If !IsObject(vars.currency_counter.currencies[name])
+                    vars.currency_counter.currencies[name] := {"count": 0, "price": 0.0, "price_currency": "exalt", "price_updated": 0}
+
+                ; Add the amount
+                vars.currency_counter.currencies[name].count += amount
+                CurrencyCounter_SaveCurrency(name)
+            }
+        }
+    }
+}
+
+; Fired when a lifeforce label is clicked (native g-label - AHK passes the
+; clicked control's HWND as the first parameter automatically). Toggles
+; that lifeforce active/inactive - see CurrencyCounter_HorticraftingToggleActive().
+CurrencyCounter_HorticraftingLabelClick(cHWND)
+{
+    global vars
+
+    clicked_name := ""
+    For name, hwnd in vars.hwnd.currency_counter_horticrafting.labels
+        If (hwnd = cHWND)
+        {
+            clicked_name := name
+            Break
+        }
+    If (clicked_name = "")
+        Return
+
+    CurrencyCounter_HorticraftingToggleActive(clicked_name)
+}
+
+; Applies the active/inactive toggle rules and repaints the label colors
+; in place (no need to rebuild the whole overlay):
+;   - WILD/VIVID/PRIMAL are mutually exclusive; clicking the one that's
+;     already active does nothing (one of the three must stay active at
+;     all times), clicking a different one switches the active one over.
+;   - SACRED/RANCOUR (not in the exclusive list) toggle independently.
+CurrencyCounter_HorticraftingToggleActive(name)
+{
+    global vars
+
+    If LLK_HasVal(vars.currency_counter.horticrafting_exclusive, name)
+    {
+        If vars.currency_counter.horticrafting_active[name]
+            Return ; already the active one of the trio - stays active
+        For i, ex_name in vars.currency_counter.horticrafting_exclusive
+            vars.currency_counter.horticrafting_active[ex_name] := (ex_name = name) ? 1 : 0
+    }
+    Else
+        vars.currency_counter.horticrafting_active[name] := !vars.currency_counter.horticrafting_active[name]
+
+    For lf_name, hwnd in vars.hwnd.currency_counter_horticrafting.label_bg
+    {
+        color := vars.currency_counter.horticrafting_active[lf_name] ? "41BB1C" : "Black"
+        GuiControl, % "+Background" color, % hwnd
+    }
+}
+
+; Fired on every keystroke in an amount field (native Edit g-label - AHK
+; passes the changed control's HWND as the first parameter automatically).
+; Saves the parsed value straight back to horticrafting_amounts.
+CurrencyCounter_HorticraftingAmountChange(cHWND)
+{
+    global vars
+
+    For name, hwnd in vars.hwnd.currency_counter_horticrafting.amounts
+        If (hwnd = cHWND)
+        {
+            vars.currency_counter.horticrafting_amounts[name] := LLK_ControlGet(cHWND) + 0
+            Return
+        }
 }
 
 ; Entry point for the omni-key click handler.
@@ -419,7 +628,10 @@ CurrencyCounter_HorticraftingClick()
     local
 
     If !Screenchecks_ImageSearch("horticrafting")
-        Return
+	{
+	    CurrencyCounter_HorticraftingOverlay("destroy")
+	    Return
+	}
 
     CurrencyCounter_HorticraftingOverlay()
 }
