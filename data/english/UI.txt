@@ -39,3 +39,7 @@
 		m_cc_rate_age			=	"ratio age (h):"
 		m_cc_age_warn			=	"warn:"
 		m_cc_age_stale			=	"stale:"
+
+;## screen-checks - possible conflicts
+		global_horticrafting	=	"horticrafting station"
+		global_allflame			=	"allflame crafting station"
