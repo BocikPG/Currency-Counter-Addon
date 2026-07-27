@@ -313,9 +313,17 @@ Init_currency_counter()
 	vars.currency_counter.allflame_layout := {}
 	alayout := vars.currency_counter.allflame_layout
 
-	; Currency-count Edit field (overlaid on the station's own black
-	; "1200" cost box)
-	alayout.xAmount := Round(vars.client.h * (658 / 1080))
+	; OCR read region - the station's own black "1200" cost box. Kept
+	; separate from the Edit field below, since that's now placed to the
+	; right as a manual fallback rather than directly overlaying it.
+	alayout.xOCR := Round(vars.client.h * (658 / 1080))
+	alayout.yOCR := Round(vars.client.h * (485 / 1080))
+	alayout.wOCR := Round(vars.client.h * (70 / 1080))
+	alayout.hOCR := Round(vars.client.h * (26 / 1080))
+
+	; Currency-count Edit field (manual fallback, placed to the right of
+	; the station's own cost box so it doesn't cover the OCR region above)
+	alayout.xAmount := Round(vars.client.h * (750 / 1080))
 	alayout.yAmount := Round(vars.client.h * (485 / 1080))
 	alayout.wAmount := Round(vars.client.h * (70 / 1080))
 	alayout.hAmount := Round(vars.client.h * (26 / 1080))
@@ -819,15 +827,18 @@ CurrencyCounter_AllflameOverlay(mode := "toggle")
 }
 
 ; Reads the current cost shown in the station's own black cost box via
-; OCR. This reuses the exact same "Exile UI: OCR" spawn + WM_COPYDATA
-; handshake that Statlas() uses (see statlas.ahk / modules\_ocr
-; thread.ahk) - vars.ocr_comms.text gets filled in by the existing
-; WM_COPYDATA receiver elsewhere in the framework, same as it does for
-; Statlas(). We're just handing it a different clip rect (the cost box
-; instead of the map name under the cursor).
+; OCR. Same "Exile UI: OCR" spawn + WM_COPYDATA handshake that
+; Statlas() uses (see statlas.ahk / modules\_ocr thread.ahk) -
+; vars.ocr_comms.text gets filled in by the existing WM_COPYDATA
+; receiver elsewhere in the framework, same as it does for Statlas().
+; We're just handing it a different clip rect (the cost box instead of
+; the map name under the cursor).
 ;
 ; Returns the parsed number, or "" if OCR failed/timed out/found no
-; digits - the caller falls back to the Edit field's value in that case.
+; digits - the caller falls back to whatever's cached in allflame_amount
+; in that case. This blocks for up to ~1s, but that's fine here since
+; it runs before CurrencyCounter_AllflameCraftClick() forwards the click
+; to the game - see that function for why the ordering matters.
 CurrencyCounter_AllflameOCR()
 {
     global vars, settings
@@ -838,7 +849,7 @@ CurrencyCounter_AllflameOCR()
     Gui, ocr_comms: New, -DPIScale -Caption +LastFound +AlwaysOnTop +ToolWindow +Border, % "Exile UI: OCR"
     WinSet, Trans, 1
     Gui, ocr_comms: Add, Text,, % "client: " vars.hwnd.poe_client
-    . "`nclip: " layout.xAmount "|" layout.yAmount "|" layout.wAmount "|" layout.hAmount "`n"
+    . "`nclip: " layout.xOCR "|" layout.yOCR "|" layout.wOCR "|" layout.hOCR "`n"
     . (settings.general.blackbars ? "blackbars: " vars.client.x - vars.monitor.x "|0|" vars.client.w "|" vars.client.h "`n" : "")
     . (settings.general.lang_client = "english" ? "`nenglish" : "")
     Gui, ocr_comms: Show, NA x10000 y10000
@@ -870,11 +881,15 @@ CurrencyCounter_AllflameOCR()
 }
 
 ; Fired by the CRAFT button's #If hotkey (see near the top of this
-; file). Manually checks whether the cursor is actually inside the
-; CRAFT rect (same pattern as CurrencyCounter_HorticraftingCraftClick())
-; before adding the current cost to the session - read via OCR on the
-; station's own cost box first (see CurrencyCounter_AllflameOCR()),
-; falling back to whatever's in the Edit field if that fails.
+; file) - this hotkey consumes the click (no ~) instead of passing it
+; straight through, because forwarding it first would let the game
+; close/refresh the crafting panel before OCR even gets a chance to
+; read it. So the order here matters:
+;   1. read the cost via OCR (CurrencyCounter_AllflameOCR()) while the
+;      panel is still guaranteed to be open, falling back to whatever's
+;      cached in allflame_amount if that fails
+;   2. add that cost to the session
+;   3. forward the click to the game ourselves, straight after
 CurrencyCounter_AllflameCraftClick()
 {
     global vars
@@ -889,7 +904,8 @@ CurrencyCounter_AllflameCraftClick()
         || (mouseY > vars.client.y + rect.y + rect.h)
         Return ; not on the craft button - ignore
 
-    ocr_amount := CurrencyCounter_AllflameOCR()
+    ; --- Read the cost via OCR now, before the click reaches the game ---
+    ;ocr_amount := CurrencyCounter_AllflameOCR() ;read is not clear
     amount := (ocr_amount != "") ? ocr_amount : vars.currency_counter.allflame_amount
 
     ; OCR succeeded - keep the Edit field (our fallback) in sync with
@@ -913,6 +929,8 @@ CurrencyCounter_AllflameCraftClick()
         vars.currency_counter.currencies[currency_name].count += amount
         CurrencyCounter_SaveCurrency(currency_name)
     }
+	
+	CurrencyCounter_AllflameOverlay("destroy")
 }
 
 ; Fired on every keystroke in the cost field (native Edit g-label - AHK
