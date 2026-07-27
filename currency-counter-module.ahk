@@ -244,7 +244,7 @@ Init_currency_counter()
     horticrafting_defaults := {"WILD CRYSTALLISED LIFEFORCE": 50, "VIVID CRYSTALLISED LIFEFORCE": 50, "PRIMAL CRYSTALLISED LIFEFORCE": 50, "SACRED CRYSTALLISED LIFEFORCE": 1, "CRYSTALLISED RANCOUR": 1}
     For name, default_count in horticrafting_defaults
         If !IsObject(vars.currency_counter.currencies[name])
-            vars.currency_counter.currencies[name] := {"count": default_count, "price": 0.0, "price_currency": "exalt", "price_updated": 0}
+            vars.currency_counter.currencies[name] := {"count": default_count, "price": 0.0, "price_currency": CurrencyCounter_DefaultCurrency(), "price_updated": 0}
 
     ; 2-character abbreviations used for the small clickable label boxes
     vars.currency_counter.horticrafting_abbr := {"WILD CRYSTALLISED LIFEFORCE": "WI", "VIVID CRYSTALLISED LIFEFORCE": "VI", "PRIMAL CRYSTALLISED LIFEFORCE": "PR", "SACRED CRYSTALLISED LIFEFORCE": "SA", "CRYSTALLISED RANCOUR": "RA"}
@@ -303,7 +303,7 @@ Init_currency_counter()
 	; sure a tracked entry exists instead of starting blank.
 	vars.currency_counter.allflame_currency := "DEAD MAN'S SULPHUR"
 	If !IsObject(vars.currency_counter.currencies[vars.currency_counter.allflame_currency])
-	    vars.currency_counter.currencies[vars.currency_counter.allflame_currency] := {"count": 0, "price": 0.0, "price_currency": "exalt", "price_updated": 0}
+	    vars.currency_counter.currencies[vars.currency_counter.allflame_currency] := {"count": 0, "price": 0.0, "price_currency": CurrencyCounter_DefaultCurrency(), "price_updated": 0}
 
 
 	vars.currency_counter.allflame_amount := 1200
@@ -428,6 +428,14 @@ CurrencyCounter_DeleteSession(id)
     ; Remove INI sections
     IniDelete, % Currency_Counter_instance.config_path, % "session_" id
     IniDelete, % Currency_Counter_instance.config_path, % "session_" id "_currencies"
+}
+
+; Default price_currency used when seeding a brand-new currency entry -
+; PoE1 (vars.poe_version blank) defaults to chaos, PoE2 stays on exalt.
+CurrencyCounter_DefaultCurrency()
+{
+    global vars
+    Return (vars.poe_version = "") ? "chaos" : "exalt"
 }
 
 CurrencyCounter_SaveIndex()
@@ -654,7 +662,7 @@ CurrencyCounter_HorticraftingCraftClick(cHWND := 0)
             {
                 ; Ensure currency entry exists
                 If !IsObject(vars.currency_counter.currencies[name])
-                    vars.currency_counter.currencies[name] := {"count": 0, "price": 0.0, "price_currency": "exalt", "price_updated": 0}
+                    vars.currency_counter.currencies[name] := {"count": 0, "price": 0.0, "price_currency": CurrencyCounter_DefaultCurrency(), "price_updated": 0}
 
                 ; Add the amount
                 vars.currency_counter.currencies[name].count += amount
@@ -924,7 +932,7 @@ CurrencyCounter_AllflameCraftClick()
         currency_name := vars.currency_counter.allflame_currency
 
         If !IsObject(vars.currency_counter.currencies[currency_name])
-            vars.currency_counter.currencies[currency_name] := {"count": 0, "price": 0.0, "price_currency": "exalt", "price_updated": 0}
+            vars.currency_counter.currencies[currency_name] := {"count": 0, "price": 0.0, "price_currency": CurrencyCounter_DefaultCurrency(), "price_updated": 0}
 
         vars.currency_counter.currencies[currency_name].count += amount
         CurrencyCounter_SaveCurrency(currency_name)
@@ -991,7 +999,7 @@ CurrencyCounter_RClick()
     vars.currency_counter.picked := 1
     vars.currency_counter.name := name
     If !IsObject(vars.currency_counter.currencies[name])
-        vars.currency_counter.currencies[name] := {"count": 0, "price": 0.0, "price_currency": "exalt", "price_updated": 0}
+        vars.currency_counter.currencies[name] := {"count": 0, "price": 0.0, "price_currency": CurrencyCounter_DefaultCurrency(), "price_updated": 0}
     CurrencyCounter_DrawBar()
 }
 
@@ -1166,7 +1174,7 @@ CurrencyCounter_LClick()
         For i, gname in vars.currency_counter.group
         {
             If !IsObject(vars.currency_counter.currencies[gname])
-                vars.currency_counter.currencies[gname] := {"count": 0, "price": 0.0, "price_currency": "exalt", "price_updated": 0}
+                vars.currency_counter.currencies[gname] := {"count": 0, "price": 0.0, "price_currency": CurrencyCounter_DefaultCurrency(), "price_updated": 0}
             vars.currency_counter.currencies[gname].count += 1
             CurrencyCounter_SaveCurrency(gname)
         }
@@ -1190,7 +1198,7 @@ CurrencyCounter_LClick()
         ; --- Use the (possibly substituted) currency name for counting ---
         if(Blank(vars.currency_counter.currencies[vars.currency_counter.name]))
         {
-            vars.currency_counter.currencies[vars.currency_counter.name] := {"count": 0, "price": 0.0, "price_currency": "exalt", "price_updated": 0}
+            vars.currency_counter.currencies[vars.currency_counter.name] := {"count": 0, "price": 0.0, "price_currency": CurrencyCounter_DefaultCurrency(), "price_updated": 0}
         }
         vars.currency_counter.currencies[vars.currency_counter.name].count += 1
         vars.currency_counter.last_used := vars.currency_counter.name
@@ -1268,7 +1276,7 @@ CurrencyCounter_ProcessLog(line)
     {
         currency_name := Format("{:U}", Trim(m1))
         If !IsObject(vars.currency_counter.currencies[currency_name])
-            vars.currency_counter.currencies[currency_name] := {"count": 0, "price": 0.0, "price_currency": "exalt", "price_updated": 0}
+            vars.currency_counter.currencies[currency_name] := {"count": 0, "price": 0.0, "price_currency": CurrencyCounter_DefaultCurrency(), "price_updated": 0}
         vars.currency_counter.currencies[currency_name].count += 1
         CurrencyCounter_SaveCurrency(currency_name)
         CurrencyCounter_DrawBar()
@@ -1993,7 +2001,7 @@ CurrencyCounter_Logs2(cHWND)
 		add_cur_confirm := 0, add_cur_confirm_ts := 0
 		If !IsObject(vars.currency_counter.currencies[label])
 		{
-			vars.currency_counter.currencies[label] := {"count": 1, "price": 0.0, "price_currency": "exalt", "price_updated": 0}
+			vars.currency_counter.currencies[label] := {"count": 1, "price": 0.0, "price_currency": CurrencyCounter_DefaultCurrency(), "price_updated": 0}
 			CurrencyCounter_SaveCurrency(label)
 		}
 		Else If (vars.currency_counter.currencies[label].count = 0)
