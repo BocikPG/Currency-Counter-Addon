@@ -2377,9 +2377,9 @@ CurrencyCounter_PriceEditCommit()
 			num := Trim(parts[1])
 			den := Trim(parts[2])
 			; Both must be numbers and denominator > 0
-			If IsNumber(num) && IsNumber(den) && (num + 0 > 0)
+			If IsNumber(num) && IsNumber(den) && (den + 0 > 0)
 			{
-				price := (den + 0) / (num + 0)
+				price := (num + 0) / (den + 0)
 				If (price >= 0)
 				{
 					vars.currency_counter.currencies[cname].price := price
