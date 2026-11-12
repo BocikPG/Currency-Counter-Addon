@@ -6,11 +6,14 @@ Requires at least v1.65.3 of Exile-UI (https://github.com/Lailloken/Exile-UI/rel
 1. In main Exile-UI folder create "add-ons" folder
 2. Open Exile-UI
 3. Go to new Add-on Section
+
 ![Screenshot](img/md/settings%20addon-menu.png)
+
 4. Copy link to this repo to clipboard: https://github.com/BocikPG/Currency-Counter-Addon/
 5. Click `Import` and wait a while, new entry in `List of downloaded add-ons` should appear
 5. Click `Enable` next to Currency Counter
 6. Click `Apply & Restart` to load it
+
 ![Screenshot](img/md/settings%20addon-menu%20enable%20and%20apply.png)
 
 At the end it should look like this:
