@@ -2,42 +2,22 @@
 Add-on for Lailloken's Exile-UI that counts currency you spend in Path of Exile 1/2
 
 # Installation
-Requires at least v1.63.10 of Exile-UI (https://github.com/Lailloken/Exile-UI/releases)
+Requires at least v1.65.3 of Exile-UI (https://github.com/Lailloken/Exile-UI/releases)
 1. In main Exile-UI folder create "add-ons" folder
-2. Create "loader" file (without extension)
-3. Open "loader" in notepad and paste "#Include *i add-ons\currency counter\currency-counter-module.ahk" (without citations)
-4. Download newest release of this repo https://github.com/BocikPG/Currency-Counter-Addon/releases
-5. Create folder named "Currency Counter" in "add-ons" folder
-6. Put unzipped files inside "Currency Counter" folder
-7. It should look like this:
-
-```text
-.
-├── Exile-UI/
-│   ├── add-ons/
-│   │   └── Currency Counter
-│   │   │   └── currency-counter-module.ahk
-│   │   │   └── json.info
-│   │   │   └── ...
-│   │   └── loader
-│   ├── data
-│   ├── exports
-│   ├── ...
-│   └── Exile UI.ahk
-```
-![Screenshot](img/md/folder%20add-ons.png)
-![Screenshot](img/md/folder%20currency%20counter.png)
-
-8. Launch/restart Exile-UI
-9. In game open Exile-UI settings
-10. In add-ons section hit ENABLE button
-11. Warning about potentially malicious content will pop up, hit ok
-12. If needed enable "Currency Counter" and restart the app
-13. You can use ⚙ symbol to access add-on settings
+2. Open Exile-UI
+3. Go to new Add-on Section
+![Screenshot](img/md/settings%20addon-menu.png)
+4. Copy link to this repo to clipboard: https://github.com/BocikPG/Currency-Counter-Addon/
+5. Click `Import` and wait a while, new entry in `List of downloaded add-ons` should appear
+5. Click `Enable` next to Currency Counter
+6. Click `Apply & Restart` to load it
+![Screenshot](img/md/settings%20addon-menu%20enable%20and%20apply.png)
 
 At the end it should look like this:
 
-![Screenshot](img/md/settings%20addon-menu.png)
+![Screenshot](img/md/settings%20addon-menu%20final.png)
+
+You can access add-on settings by clicking cog icon.
 
 # Usage
 
