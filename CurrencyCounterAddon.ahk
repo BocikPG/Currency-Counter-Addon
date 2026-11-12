@@ -3,6 +3,7 @@ Class CurrencyCounterAddon
 {
 	__New(name) ; name is loaded from the JSON file
 	{
+		global vars, settings
 		this.name := name, this.settings := {}, this.hwnd := {}
 		this.addon_path := "add-ons\" name  ; path to the add-on's folder
 		this.config_path := this.addon_path "\config" vars.poe_version ".ini" ; vars.poe_version is blank for PoE1 and " 2" for PoE2 // split into separate configs not necessarily required
@@ -13,9 +14,10 @@ Class CurrencyCounterAddon
 
 		this.settings.fSize := (ini.UI.font ? ini.UI.font : settings.general.fSize)
 		LLK_FontDimensions(this.settings.fSize, h, w), this.settings.fWidth := w, this.settings.fHeight := h ; get approx. dimensions for font width and height (optional)
-		this.settings.hotkey_stats := ini.settings["hotkey stats"]
-		this.settings.hotkey_stats := "F6" ; TEMP: force-bind for OmniClick() testing, remove later
-		this.Init()
+
+        Currency_Counter_instance := this
+        this.LoadUI()
+        Init_currency_counter()
 	}
 
 	Hotkeys() ; called when a customizable hotkey is pressed
@@ -29,25 +31,6 @@ Class CurrencyCounterAddon
 		}
 		KeyWait, % hotkey ; wait until the hotkey is released (prevents continuous function call)
 	}
-
-    Init()
-    {
-		If !Blank(this.settings.hotkey_stats) && (key := Hotkeys_Convert(this.settings.hotkey_stats)) ; function converts key-names to scan-codes and also checks validity
-		{
-			func := ObjBindMethod(this, "Hotkeys")
-			Hotkey, IfWinActive, ahk_group poe_window
-			Hotkey, % key, % func, on
-		}
-		If !Blank(this.settings.hotkey_stats2) && (key2 := Hotkeys_Convert(this.settings.hotkey_stats2)) ; TEMP: second test binding, remove alongside hotkey_stats2 above
-		{
-			func2 := ObjBindMethod(this, "Hotkeys")
-			Hotkey, IfWinActive, ahk_group poe_window
-			Hotkey, % key2, % func2, on
-		}
-        Currency_Counter_instance := this
-        this.LoadUI()
-        Init_currency_counter()
-    }
 
     LoadUI() ; temp method in case Lailloken doesn't create loading on his side in time
     {
@@ -98,7 +81,7 @@ Class CurrencyCounterAddon
         CurrencyCounter_ProcessLog(log_text)
     }
 
-    Settings_menu(mode := "") ; called when clicking the cogwheel-icon in the "add-ons" section of the settings menu
+    Settings_Open(mode := "") ; called when clicking the cogwheel-icon in the "add-ons" section of the settings menu
 	{
 		global vars, settings
 		static fSize, wHotkey
@@ -111,11 +94,57 @@ Class CurrencyCounterAddon
         Settings_currency_counter()
     }
 
-    OmniClick()
+    Omni_OnBlank()
     {
-        CurrencyCounter_HorticraftingClick()
-        CurrencyCounter_AllflameClick()
+        local
+    	global vars, settings
+
+        If (vars.poe_version != "") ; Horticrafting and Allflame stations only exist in PoE 1
+            Return false
+        If CurrencyCounter_HorticraftingClick()
+		{
+			Return true
+		}
+        ; If CurrencyCounter_AllflameClick()
+		; {
+		; 	Return true
+		; }
     }
+
+	Omni_ItemContext()
+	{
+		local
+    	global vars, settings
+
+	}
+
+	Omni_OnItem()
+	{
+		local
+    	global vars, settings
+
+	}
+
+	ESC(ByRef passESC)
+	{
+		local
+		global vars, settings
+
+		If CurrencyCounter_OverlayVisible()
+		{
+			CurrencyCounter_HorticraftingOverlay("destroy")
+			CurrencyCounter_AllflameOverlay("destroy")
+			passESC := true
+			Return true
+		}
+		Else If WinExist("ahk_id " vars.hwnd.cc_logs.main)
+		{
+			LLK_Overlay(vars.hwnd.cc_logs.main, "destroy")
+			vars.hwnd.cc_logs := {"main": ""}
+			passESC := false
+			Return true
+		}
+	}
 }
 
 global Currency_Counter_instance := ""
@@ -140,10 +169,10 @@ LButton::CurrencyCounter_Logs2(vars.general.cMouse)
 #If settings.features.currency_counter && (vars.general.wMouse = vars.hwnd.poe_client) && vars.currency_counter.picked
 ~*LButton::CurrencyCounter_LClick()
 
-#If vars.hwnd.currency_counter_horticrafting.main
+#If CurrencyCounter_HorticraftingVisible()
 ~LButton::CurrencyCounter_HorticraftingCraftClick()
 
-#If vars.hwnd.currency_counter_allflame.main
+#If CurrencyCounter_AllflameVisible()
 ~LButton::CurrencyCounter_AllflameCraftClick()
 
 ; ──────────────────────────────────────────────────────────────
@@ -176,7 +205,7 @@ Init_currency_counter()
 
     raw := ini.settings["sessions"]
     settings.currency_counter.sessions := IsObject(check := Json.Load(raw)) ? check : {}
-    settings.currency_counter.active := !Blank(check := ini.settings["active"]) ? check : 0
+    settings.currency_counter.active := !Blank(check := ini.settings["active"]) ? check : ""
 
     settings.currency_counter.bar_x := !Blank(check := ini.settings["bar-x"]) ? check : ""
     settings.currency_counter.bar_y := !Blank(check := ini.settings["bar-y"]) ? check : ""
@@ -198,6 +227,8 @@ Init_currency_counter()
     settings.currency_counter.exalt_div := !Blank(check := ini.settings["exalt-div"]) ? check + 0 : 1
     settings.currency_counter.chaos_div_updated := !Blank(check := ini.settings["chaos-div-updated"]) ? check : 0
     settings.currency_counter.exalt_div_updated := !Blank(check := ini.settings["exalt-div-updated"]) ? check : 0
+	settings.currency_counter.chaos_div_src := ini.settings["chaos-div-src"]
+    settings.currency_counter.exalt_div_src := ini.settings["exalt-div-src"]
 
     LLK_FontDimensions(settings.currency_counter.fSize, height, width)
     settings.currency_counter.fHeight := height
@@ -216,124 +247,131 @@ Init_currency_counter()
     vars.currency_counter.groupable_poe1 := ["RESONATOR"]
     vars.currency_counter.groupable_poe2 := []
 
-    ; Fossil name -> array of effect description lines
-    vars.currency_counter.fossils := {}
-	lang := FileExist(this.addon_path "\data\" settings.general.lang_client "\fossils.json") ? settings.general.lang_client : "english"
-    file := Currency_Counter_instance.addon_path "\data\" lang "\fossils.json"
-    If FileExist(file)
+    ; ─── PoE 1-only features (fossils/resonators, Horticrafting, Allflame) ───
+    ; vars.poe_version is blank for PoE 1 and " 2" for PoE 2, so nothing in this
+    ; block is registered, seeded or loaded when playing PoE 2.
+    If (vars.poe_version = "")
     {
-        FileRead, raw_fossils, % file
-        vars.currency_counter.fossils := IsObject(check := Json.Load(raw_fossils)) ? check : {}
+	    ; Fossil name -> array of effect description lines
+	    vars.currency_counter.fossils := {}
+		lang := FileExist(Currency_Counter_instance.addon_path "\data\" settings.general.lang_client "\fossils.json") ? settings.general.lang_client : "english"
+	    file := Currency_Counter_instance.addon_path "\data\" lang "\fossils.json"
+	    If FileExist(file)
+	    {
+	        FileRead, raw_fossils, % file
+	        vars.currency_counter.fossils := IsObject(check := Json.Load(raw_fossils)) ? check : {}
+	    }
+
+	    ; Horticrafting station screen-check - reuses the existing image-check
+	    ini_sc := IniBatchRead("ini" vars.poe_version "\screen checks (" vars.client.h "p).ini")
+	    vars.imagesearch.list.horticrafting := 1
+	    If !LLK_HasVal(vars.imagesearch.search, "horticrafting")
+	        vars.imagesearch.search.Push("horticrafting")
+	    parse := StrSplit(ini_sc.horticrafting["last coordinates"], ",")
+	    vars.imagesearch.horticrafting := {"check": 0, "x1": parse.1, "y1": parse.2, "x2": parse.3, "y2": parse.4}
+	    vars.imagesearch.checks.horticrafting := {"x": Round(vars.client.h * (483/1080)), "y": Round(vars.client.h * (183/1080)), "w": Round(vars.client.h * (85/1080)), "h": Round(vars.client.h * (30/1080))}
+
+	    ; Horticrafting lifeforce labels - named in row order as they appear
+	    ; in the station's stock panel (see CurrencyCounter_HorticraftingOverlay()).
+	    ; They don't go through the normal RClick/LClick pick-up flow (the
+	    ; station consumes them internally), so seed a sensible starting
+	    ; count the first time each is seen instead of starting at 0.
+	    vars.currency_counter.horticrafting_lifeforces := ["WILD CRYSTALLISED LIFEFORCE", "VIVID CRYSTALLISED LIFEFORCE", "PRIMAL CRYSTALLISED LIFEFORCE", "SACRED CRYSTALLISED LIFEFORCE", "CRYSTALLISED RANCOUR"]
+	    horticrafting_defaults := {"WILD CRYSTALLISED LIFEFORCE": 50, "VIVID CRYSTALLISED LIFEFORCE": 50, "PRIMAL CRYSTALLISED LIFEFORCE": 50, "SACRED CRYSTALLISED LIFEFORCE": 1, "CRYSTALLISED RANCOUR": 1}
+	    For name, default_count in horticrafting_defaults
+	        If !IsObject(vars.currency_counter.currencies[name])
+	            vars.currency_counter.currencies[name] := {"count": default_count, "price": 0.0, "price_currency": CurrencyCounter_DefaultCurrency(), "price_updated": 0}
+
+	    ; 2-character abbreviations used for the small clickable label boxes
+	    vars.currency_counter.horticrafting_abbr := {"WILD CRYSTALLISED LIFEFORCE": "WI", "VIVID CRYSTALLISED LIFEFORCE": "VI", "PRIMAL CRYSTALLISED LIFEFORCE": "PR", "SACRED CRYSTALLISED LIFEFORCE": "SA", "CRYSTALLISED RANCOUR": "RA"}
+
+	    ; Lifeforce labels used to be mutually exclusive (WILD/VIVID/PRIMAL); they can now all be active at once.
+	    ; Leave empty to keep every label independent.
+	    vars.currency_counter.horticrafting_exclusive := []
+
+	    ; Active/inactive toggle state per lifeforce label
+	    vars.currency_counter.horticrafting_active := {"WILD CRYSTALLISED LIFEFORCE": 1, "VIVID CRYSTALLISED LIFEFORCE": 0, "PRIMAL CRYSTALLISED LIFEFORCE": 0, "SACRED CRYSTALLISED LIFEFORCE": 0, "CRYSTALLISED RANCOUR": 0}
+
+	    ; Editable copy of horticrafting_defaults shown/edited in the amount
+	    ; fields next to each label; kept separate so the original defaults
+	    ; stay available as a reset point later if needed.
+	    vars.currency_counter.horticrafting_defaults := horticrafting_defaults
+	    vars.currency_counter.horticrafting_amounts := horticrafting_defaults.Clone()
+
+		; ─── Horticrafting overlay layout (scaled once at init) ───
+		; All coordinates measured on 1920x1080 as fractions of vars.client.h.
+		vars.currency_counter.horticrafting_layout := {}
+
+		; Row Y positions for each lifeforce (row1..row5)
+		rows_y := [351, 410, 469, 528, 587]
+		vars.currency_counter.horticrafting_layout.rows_y := []
+		For i, y in rows_y
+		    vars.currency_counter.horticrafting_layout.rows_y.Push(Round(vars.client.h * (y / 1080)))
+
+		; Label (abbreviation) position
+		vars.currency_counter.horticrafting_layout.xLabel := Round(vars.client.h * (1165 / 1080))
+		vars.currency_counter.horticrafting_layout.wLabel := Round(vars.client.h * (24 / 1080))
+		vars.currency_counter.horticrafting_layout.hLabel := Round(vars.client.h * (22 / 1080))
+
+		; Amount Edit field position (right of label)
+		layout := vars.currency_counter.horticrafting_layout
+		layout.xAmount := layout.xLabel + layout.wLabel + Round(vars.client.h * (1 / 1080))
+		layout.wAmount := Round(vars.client.h * (60 / 1080))
+		layout.hAmount := layout.hLabel
+
+		; CRAFT button rectangle (used for the hotkey and the visual frame)
+		layout.craft_rect := {}
+		layout.craft_rect.x := Round(vars.client.h * (896 / 1080))
+		layout.craft_rect.y := Round(vars.client.h * (585 / 1080))
+		layout.craft_rect.w := Round(vars.client.h * (142 / 1080))
+		layout.craft_rect.h := Round(vars.client.h * (44 / 1080))
+
+		; ; ─── Allflame Crafting station ───
+		; vars.imagesearch.list.allflame := 1
+		; If !LLK_HasVal(vars.imagesearch.search, "allflame")
+		;     vars.imagesearch.search.Push("allflame")
+		; parse := StrSplit(ini_sc.allflame["last coordinates"], ",")
+		; vars.imagesearch.allflame := {"check": 0, "x1": parse.1, "y1": parse.2, "x2": parse.3, "y2": parse.4}
+		; vars.imagesearch.checks.allflame := {"x": Round(vars.client.h * (478/1080)), "y": Round(vars.client.h * (228/1080)), "w": Round(vars.client.h * (172/1080)), "h": Round(vars.client.h * (22/1080))}
+
+		; Allflame's cost currency ("Dead Man's Sulphur") - like the
+		; horticrafting lifeforces, this is consumed by the station itself
+		; rather than picked up via the normal RClick/LClick flow, so make
+		; sure a tracked entry exists instead of starting blank.
+		vars.currency_counter.allflame_currency := "DEAD MAN'S SULPHUR"
+		If !IsObject(vars.currency_counter.currencies[vars.currency_counter.allflame_currency])
+		    vars.currency_counter.currencies[vars.currency_counter.allflame_currency] := {"count": 0, "price": 0.0, "price_currency": CurrencyCounter_DefaultCurrency(), "price_updated": 0}
+
+
+		vars.currency_counter.allflame_amount := 1200
+
+		; ─── Allflame Crafting overlay layout (scaled once at init) ───
+		; All coordinates measured on 1920x1080 as fractions of vars.client.h.
+		vars.currency_counter.allflame_layout := {}
+		alayout := vars.currency_counter.allflame_layout
+
+		; OCR read region - the station's own black "1200" cost box. Kept
+		; separate from the Edit field below, since that's now placed to the
+		; right as a manual fallback rather than directly overlaying it.
+		alayout.xOCR := Round(vars.client.h * (658 / 1080))
+		alayout.yOCR := Round(vars.client.h * (485 / 1080))
+		alayout.wOCR := Round(vars.client.h * (70 / 1080))
+		alayout.hOCR := Round(vars.client.h * (26 / 1080))
+
+		; Currency-count Edit field (manual fallback, placed to the right of
+		; the station's own cost box so it doesn't cover the OCR region above)
+		alayout.xAmount := Round(vars.client.h * (750 / 1080))
+		alayout.yAmount := Round(vars.client.h * (485 / 1080))
+		alayout.wAmount := Round(vars.client.h * (70 / 1080))
+		alayout.hAmount := Round(vars.client.h * (26 / 1080))
+
+		; CRAFT button rectangle (used for the hotkey and the visual frame)
+		alayout.craft_rect := {}
+		alayout.craft_rect.x := Round(vars.client.h * (575 / 1080))
+		alayout.craft_rect.y := Round(vars.client.h * (538 / 1080))
+		alayout.craft_rect.w := Round(vars.client.h * (107 / 1080))
+		alayout.craft_rect.h := Round(vars.client.h * (34 / 1080))
     }
-
-    ; Horticrafting station screen-check - reuses the existing image-check
-    ini_sc := IniBatchRead("ini" vars.poe_version "\screen checks (" vars.client.h "p).ini")
-    vars.imagesearch.list.horticrafting := 1
-    If !LLK_HasVal(vars.imagesearch.search, "horticrafting")
-        vars.imagesearch.search.Push("horticrafting")
-    parse := StrSplit(ini_sc.horticrafting["last coordinates"], ",")
-    vars.imagesearch.horticrafting := {"check": 0, "x1": parse.1, "y1": parse.2, "x2": parse.3, "y2": parse.4}
-    vars.imagesearch.checks.horticrafting := {"x": Round(vars.client.h * (483/1080)), "y": Round(vars.client.h * (183/1080)), "w": Round(vars.client.h * (85/1080)), "h": Round(vars.client.h * (30/1080))}
-
-    ; Horticrafting lifeforce labels - named in row order as they appear
-    ; in the station's stock panel (see CurrencyCounter_HorticraftingOverlay()).
-    ; They don't go through the normal RClick/LClick pick-up flow (the
-    ; station consumes them internally), so seed a sensible starting
-    ; count the first time each is seen instead of starting at 0.
-    vars.currency_counter.horticrafting_lifeforces := ["WILD CRYSTALLISED LIFEFORCE", "VIVID CRYSTALLISED LIFEFORCE", "PRIMAL CRYSTALLISED LIFEFORCE", "SACRED CRYSTALLISED LIFEFORCE", "CRYSTALLISED RANCOUR"]
-    horticrafting_defaults := {"WILD CRYSTALLISED LIFEFORCE": 50, "VIVID CRYSTALLISED LIFEFORCE": 50, "PRIMAL CRYSTALLISED LIFEFORCE": 50, "SACRED CRYSTALLISED LIFEFORCE": 1, "CRYSTALLISED RANCOUR": 1}
-    For name, default_count in horticrafting_defaults
-        If !IsObject(vars.currency_counter.currencies[name])
-            vars.currency_counter.currencies[name] := {"count": default_count, "price": 0.0, "price_currency": CurrencyCounter_DefaultCurrency(), "price_updated": 0}
-
-    ; 2-character abbreviations used for the small clickable label boxes
-    vars.currency_counter.horticrafting_abbr := {"WILD CRYSTALLISED LIFEFORCE": "WI", "VIVID CRYSTALLISED LIFEFORCE": "VI", "PRIMAL CRYSTALLISED LIFEFORCE": "PR", "SACRED CRYSTALLISED LIFEFORCE": "SA", "CRYSTALLISED RANCOUR": "RA"}
-
-    ; WILD/VIVID/PRIMAL are mutually exclusive - only one of these three can be active at a time. 
-    vars.currency_counter.horticrafting_exclusive := ["WILD CRYSTALLISED LIFEFORCE", "VIVID CRYSTALLISED LIFEFORCE", "PRIMAL CRYSTALLISED LIFEFORCE"]
-
-    ; Active/inactive toggle state per lifeforce label
-    vars.currency_counter.horticrafting_active := {"WILD CRYSTALLISED LIFEFORCE": 1, "VIVID CRYSTALLISED LIFEFORCE": 0, "PRIMAL CRYSTALLISED LIFEFORCE": 0, "SACRED CRYSTALLISED LIFEFORCE": 0, "CRYSTALLISED RANCOUR": 0}
-
-    ; Editable copy of horticrafting_defaults shown/edited in the amount
-    ; fields next to each label; kept separate so the original defaults
-    ; stay available as a reset point later if needed.
-    vars.currency_counter.horticrafting_defaults := horticrafting_defaults
-    vars.currency_counter.horticrafting_amounts := horticrafting_defaults.Clone()
-
-	; ─── Horticrafting overlay layout (scaled once at init) ───
-	; All coordinates measured on 1920x1080 as fractions of vars.client.h.
-	vars.currency_counter.horticrafting_layout := {}
-
-	; Row Y positions for each lifeforce (row1..row5)
-	rows_y := [351, 410, 469, 528, 587]
-	vars.currency_counter.horticrafting_layout.rows_y := []
-	For i, y in rows_y
-	    vars.currency_counter.horticrafting_layout.rows_y.Push(Round(vars.client.h * (y / 1080)))
-
-	; Label (abbreviation) position
-	vars.currency_counter.horticrafting_layout.xLabel := Round(vars.client.h * (1165 / 1080))
-	vars.currency_counter.horticrafting_layout.wLabel := Round(vars.client.h * (24 / 1080))
-	vars.currency_counter.horticrafting_layout.hLabel := Round(vars.client.h * (22 / 1080))
-
-	; Amount Edit field position (right of label)
-	layout := vars.currency_counter.horticrafting_layout
-	layout.xAmount := layout.xLabel + layout.wLabel + Round(vars.client.h * (1 / 1080))
-	layout.wAmount := Round(vars.client.h * (60 / 1080))
-	layout.hAmount := layout.hLabel
-
-	; CRAFT button rectangle (used for the hotkey and the visual frame)
-	layout.craft_rect := {}
-	layout.craft_rect.x := Round(vars.client.h * (896 / 1080))
-	layout.craft_rect.y := Round(vars.client.h * (585 / 1080))
-	layout.craft_rect.w := Round(vars.client.h * (142 / 1080))
-	layout.craft_rect.h := Round(vars.client.h * (44 / 1080))
-
-	; ─── Allflame Crafting station ───
-	vars.imagesearch.list.allflame := 1
-	If !LLK_HasVal(vars.imagesearch.search, "allflame")
-	    vars.imagesearch.search.Push("allflame")
-	parse := StrSplit(ini_sc.allflame["last coordinates"], ",")
-	vars.imagesearch.allflame := {"check": 0, "x1": parse.1, "y1": parse.2, "x2": parse.3, "y2": parse.4}
-	vars.imagesearch.checks.allflame := {"x": Round(vars.client.h * (478/1080)), "y": Round(vars.client.h * (228/1080)), "w": Round(vars.client.h * (172/1080)), "h": Round(vars.client.h * (22/1080))}
-
-	; Allflame's cost currency ("Dead Man's Sulphur") - like the
-	; horticrafting lifeforces, this is consumed by the station itself
-	; rather than picked up via the normal RClick/LClick flow, so make
-	; sure a tracked entry exists instead of starting blank.
-	vars.currency_counter.allflame_currency := "DEAD MAN'S SULPHUR"
-	If !IsObject(vars.currency_counter.currencies[vars.currency_counter.allflame_currency])
-	    vars.currency_counter.currencies[vars.currency_counter.allflame_currency] := {"count": 0, "price": 0.0, "price_currency": CurrencyCounter_DefaultCurrency(), "price_updated": 0}
-
-
-	vars.currency_counter.allflame_amount := 1200
-
-	; ─── Allflame Crafting overlay layout (scaled once at init) ───
-	; All coordinates measured on 1920x1080 as fractions of vars.client.h.
-	vars.currency_counter.allflame_layout := {}
-	alayout := vars.currency_counter.allflame_layout
-
-	; OCR read region - the station's own black "1200" cost box. Kept
-	; separate from the Edit field below, since that's now placed to the
-	; right as a manual fallback rather than directly overlaying it.
-	alayout.xOCR := Round(vars.client.h * (658 / 1080))
-	alayout.yOCR := Round(vars.client.h * (485 / 1080))
-	alayout.wOCR := Round(vars.client.h * (70 / 1080))
-	alayout.hOCR := Round(vars.client.h * (26 / 1080))
-
-	; Currency-count Edit field (manual fallback, placed to the right of
-	; the station's own cost box so it doesn't cover the OCR region above)
-	alayout.xAmount := Round(vars.client.h * (750 / 1080))
-	alayout.yAmount := Round(vars.client.h * (485 / 1080))
-	alayout.wAmount := Round(vars.client.h * (70 / 1080))
-	alayout.hAmount := Round(vars.client.h * (26 / 1080))
-
-	; CRAFT button rectangle (used for the hotkey and the visual frame)
-	alayout.craft_rect := {}
-	alayout.craft_rect.x := Round(vars.client.h * (575 / 1080))
-	alayout.craft_rect.y := Round(vars.client.h * (538 / 1080))
-	alayout.craft_rect.w := Round(vars.client.h * (107 / 1080))
-	alayout.craft_rect.h := Round(vars.client.h * (34 / 1080))
 
     vars.hwnd.currency_counter := {"main": "", "drag": ""}
     vars.hwnd.currency_counter_table := {"main": ""}
@@ -348,9 +386,18 @@ Init_currency_counter()
         vars.pics.currency_counter := {"icon": LLK_ImageCache("img\GUI\currency\blessed.png")}
     Else
         vars.pics.currency_counter := {"icon": ""}
-    If !Blank(settings.currency_counter.active)
+
+    ; Activate a session that actually exists: the saved one, else the first one, else create one
+    active := settings.currency_counter.active
+    If active && settings.currency_counter.sessions.HasKey(active)
+        CurrencyCounter_SetActive(active)
+    Else If settings.currency_counter.sessions.Count()
     {
-        CurrencyCounter_SetActive(settings.currency_counter.active)
+        For id in settings.currency_counter.sessions
+        {
+            CurrencyCounter_SetActive(id)
+            Break
+        }
     }
     Else
         CurrencyCounter_NewSession()
@@ -742,10 +789,11 @@ CurrencyCounter_HorticraftingClick()
     If !Screenchecks_ImageSearch("horticrafting")
 	{
 	    CurrencyCounter_HorticraftingOverlay("destroy")
-	    Return
+	    Return false
 	}
 
     CurrencyCounter_HorticraftingOverlay()
+	Return true
 }
 
 ; ──────────────────────────────────────────────────────────────
@@ -958,10 +1006,31 @@ CurrencyCounter_AllflameClick()
     If !Screenchecks_ImageSearch("allflame")
 	{
 	    CurrencyCounter_AllflameOverlay("destroy")
-	    Return
+	    Return false
 	}
 
     CurrencyCounter_AllflameOverlay()
+	Return true
+}
+
+
+CurrencyCounter_HorticraftingVisible()
+{
+    global vars
+    hwnd := vars.hwnd.currency_counter_horticrafting.main
+    Return hwnd && WinExist("ahk_id " hwnd) ? 1 : 0
+}
+
+CurrencyCounter_AllflameVisible()
+{
+    global vars
+    hwnd := vars.hwnd.currency_counter_allflame.main
+    Return hwnd && WinExist("ahk_id " hwnd) ? 1 : 0
+}
+
+CurrencyCounter_OverlayVisible()
+{
+    Return CurrencyCounter_HorticraftingVisible() || CurrencyCounter_AllflameVisible()
 }
 
 ; ──────────────────────────────────────────────────────────────
@@ -1465,6 +1534,7 @@ CurrencyCounter_Logs(cHWND := "")
 	If (settings.currency_counter.max_rows > 0)
 		max_lines := Min(max_lines, settings.currency_counter.max_rows)
 	ssf := settings.currency_counter.ssf
+	CurrencyCounter_SyncRates()
 	ninja_price_stale_hours := settings.currency_counter.ninja_stale_hours
 
 	; ══════════════════════════════════════════════════════════
@@ -1606,57 +1676,35 @@ CurrencyCounter_Logs(cHWND := "")
 	if(Blank(vars.currency_counter.carousel_index))
 		vars.currency_counter.carousel_index := 0
 
-	newSessionButtonWidth := hFont * 2
+		newSessionButtonWidth := hFont * 2
 	itemWidth := (totalWidth - newSessionButtonWidth - (visibleCount + 2) * spacing) / visibleCount
 	itemHeight := hFont
-	picWidth := itemWidth ; Adjust this ratio as needed
-	gap := 5
-	firstItemAdded := false
 
-	Loop % visibleCount {
-		idx := A_Index
-		xPos := (idx-1)*(itemWidth + spacing)
+	; clamp scroll position (sessions deleted / visible count changed / new session added)
+	maxIndex := Max(0, settings.currency_counter.sessions.Count() - visibleCount)
+	vars.currency_counter.carousel_index := Max(0, Min(vars.currency_counter.carousel_index, maxIndex))
+	carousel := vars.currency_counter.carousel_index
 
-		; Picture: left side                   ; top aligned within the element
-		picH := itemHeight - 2 ; a little smaller to avoid edge clipping
+	For key, val in settings.currency_counter.sessions
+	{
+		If (A_Index <= carousel)
+			Continue
+		If (A_Index > carousel + visibleCount)
+			Break
 
-		; Text: right side, vertically centered
-		txtX := xPos + picWidth + gap
-		txtW := itemWidth - picWidth - gap
+		slotNum := A_Index - carousel
+		xPos := spacing + (slotNum - 1) * (itemWidth + spacing)
+		yOpt := (slotNum = 1) ? "ys" : "yp"
 
-		yOpt := !firstItemAdded ? "ys" : "yp"
+		isActive := (key = settings.currency_counter.active)
+		bgColor := isActive ? "White" : "1A1A1A"
 
-		For key, val in settings.currency_counter.sessions
-		{
-			if(A_Index <= vars.currency_counter.carousel_index)
-				continue
-			if(A_Index > vars.currency_counter.carousel_index + visibleCount)
-				break
-
-			slotNum := A_Index - vars.currency_counter.carousel_index
-			xPos := spacing + (slotNum - 1) * (itemWidth + spacing)
-			yOpt := (slotNum = 1) ? "ys" : "yp"
-
-			isActive := (key = settings.currency_counter.active)
-			textColor := isActive ? " cBlack" : " cWhite"
-			bgColor := isActive ? "White" : "1A1A1A"
-
-			if(!Blank(val.img))
-			{
-				Gui, %GUI_name%: Add, Text, % "x" xPos " " yOpt " w" itemWidth " h" itemHeight " Border Center 0x200 BackgroundTrans", % val.name
-				Gui, %GUI_name%: Add, Progress, % "xp yp wp hp Border Disabled Background" bgColor " HWNDhwnd", 0
-				vars.hwnd.cc_logs["tab_" key] := hwnd
-			}
-			Else
-			{
-				Gui, %GUI_name%: Font, % "s" fSize2 - 2 (isActive ? " cBlack" : " cWhite"), % vars.system.font
-				Gui, %GUI_name%: Add, Text, % "x" xPos " " yOpt " w" itemWidth " h" itemHeight " Border Center 0x200 BackgroundTrans", % val.name
-				Gui, %GUI_name%: Add, Progress, % "xp yp wp hp Border Disabled Background" bgColor " HWNDhwnd", 0
-				vars.hwnd.cc_logs["tab_" key] := hwnd ; store Progress hwnd, hotkey sends cMouse which will match it
-				Gui, %GUI_name%: Font, % "s" fSize2 - 2 " cWhite", % vars.system.font
-			}
-		}
+		Gui, %GUI_name%: Font, % "s" fSize2 - 2 (isActive ? " cBlack" : " cWhite"), % vars.system.font
+		Gui, %GUI_name%: Add, Text, % "x" xPos " " yOpt " w" itemWidth " h" itemHeight " Border Center 0x200 BackgroundTrans", % val.name
+		Gui, %GUI_name%: Add, Progress, % "xp yp wp hp Border Disabled Background" bgColor " HWNDhwnd", 0
+		vars.hwnd.cc_logs["tab_" key] := hwnd ; Progress hwnd, the hotkey's cMouse matches it
 	}
+	Gui, %GUI_name%: Font, % "s" fSize2 - 2 " cWhite", % vars.system.font
 
 	Gui, %GUI_name%: Font, % "s" fSize2 * 3 " c41BB1C", % vars.system.font
 	Gui, %GUI_name%: Add, Text, % "yp x" totalWidth - newSessionButtonWidth - spacing " w" newSessionButtonWidth - spacing " h" itemHeight " Border Center 0x200 gCurrencyCounter_Logs2 HWNDhwnd", % " + "
@@ -1782,7 +1830,7 @@ CurrencyCounter_Logs(cHWND := "")
 
 		; ── Row 1: chaos → divine ─────────────────────────────
 		tsC := settings.currency_counter.chaos_div_updated
-		colorC := " c" (Blank(tsC) ? "808080" : CurrencyCounter_RateColor(tsC))
+		colorC := " c" (settings.currency_counter.chaos_div_src = "ninja" ? "FF8800" : (Blank(tsC) ? "808080" : CurrencyCounter_RateColor(tsC)))
 
 		Gui, %GUI_name%: Add, Text, % "x" pickerX " yp-" pickerImgSize - imgSize " Border 0x200 Center cC89B3C w" colW " h" halfH, % Lang_Trans("m_cc_abbr_chaos")
 		Gui, %GUI_name%: Add, Progress, % "xp yp wp hp Border Disabled Background1A1A1A HWNDhwnd", 0
@@ -1794,7 +1842,7 @@ CurrencyCounter_Logs(cHWND := "")
 
 		; ── Row 2: exalt → divine ─────────────────────────────
 		tsE := settings.currency_counter.exalt_div_updated
-		colorE := " c" (Blank(tsE) ? "808080" : CurrencyCounter_RateColor(tsE))
+		colorE := " c" (settings.currency_counter.exalt_div_src = "ninja" ? "FF8800" : (Blank(tsE) ? "808080" : CurrencyCounter_RateColor(tsE)))
 
 		; Force new row by stepping down from picker start
 		Gui, %GUI_name%: Add, Text, % "x" pickerX " y+-1 Border 0x200 Center cC89B3C w" colW " h" halfH, % Lang_Trans("m_cc_abbr_exalt")
@@ -2091,6 +2139,7 @@ CurrencyCounter_Logs2(cHWND)
 	Case "add_session":
 		KeyWait, LButton
 		CurrencyCounter_NewSession()
+		vars.currency_counter.carousel_index := 99999 ; clamped to the last page in Logs()
 		CurrencyCounter_Logs()
 		Return
 
@@ -2517,7 +2566,7 @@ CurrencyCounter_PriceAgeHours(ts)
 ;  CurrencyCounter_NinjaPrice  -  look up chaos price from stash-ninja
 ;  Returns "" if not available or feature not enabled.
 ; ──────────────────────────────────────────────────────────────
-CurrencyCounter_NinjaPrice(name)
+CurrencyCounter_NinjaPrice(name, ByRef ts := "")
 {
 	local
 	global vars, settings
@@ -2532,10 +2581,64 @@ CurrencyCounter_NinjaPrice(name)
 		If IsObject(vars.stash[tab][needle]) && IsObject(vars.stash[tab][needle].prices)
 		{
 			price := vars.stash[tab][needle].prices.1 ; slot 1 is always chaos
+			ts := vars.stash[tab].timestamp
 			Return IsNumber(price) && price > 0 ? price : ""
 		}
 	}
 	Return ""
+}
+
+; Fills chaos/div and exalt/div from poe.ninja when the manual rate is missing or stale.
+; chaos_div = divines per chaos, exalt_div = divines per exalt (same units as the manual entry).
+CurrencyCounter_SyncRates()
+{
+	local
+	global vars, settings, Currency_Counter_instance
+
+	cc := settings.currency_counter
+	If (vars.poe_version != "") || !(cc.ninja_prices && settings.features.stash)
+		Return
+	divPrice := CurrencyCounter_NinjaPrice("DIVINE ORB", tsDiv) ; chaos per divine
+	If (divPrice = "")
+		Return
+	exPrice := CurrencyCounter_NinjaPrice("EXALTED ORB", tsEx) ; chaos per exalt
+	cfg := Currency_Counter_instance.config_path, changed := 0
+
+	; ── chaos -> divine ──
+	ts := cc.chaos_div_updated
+	If (cc.chaos_div_src = "ninja") || !ts || CurrencyCounter_PriceAgeHours(ts) >= cc.rate_stale_hours
+	{
+		newVal := 1 / divPrice
+		newTs := tsDiv ? tsDiv : (cc.chaos_div_src = "ninja" && ts ? ts : A_NowUTC)
+		If (cc.chaos_div_src != "ninja") || (Abs(newVal - cc.chaos_div) > 0.0000001) || (cc.chaos_div_updated != newTs)
+		{
+			cc.chaos_div := newVal, cc.chaos_div_updated := newTs, cc.chaos_div_src := "ninja", changed := 1
+			IniWrite, % newVal, % cfg, settings, chaos-div
+			IniWrite, % newTs, % cfg, settings, chaos-div-updated
+			IniWrite, ninja, % cfg, settings, chaos-div-src
+		}
+	}
+
+	; ── exalt -> divine ──
+	If (exPrice != "")
+	{
+		ts := cc.exalt_div_updated
+		If (cc.exalt_div_src = "ninja") || !ts || CurrencyCounter_PriceAgeHours(ts) >= cc.rate_stale_hours
+		{
+			newVal := exPrice / divPrice
+			newTs := tsEx ? tsEx : (cc.exalt_div_src = "ninja" && ts ? ts : A_NowUTC)
+			If (cc.exalt_div_src != "ninja") || (Abs(newVal - cc.exalt_div) > 0.0000001) || (cc.exalt_div_updated != newTs)
+			{
+				cc.exalt_div := newVal, cc.exalt_div_updated := newTs, cc.exalt_div_src := "ninja", changed := 1
+				IniWrite, % newVal, % cfg, settings, exalt-div
+				IniWrite, % newTs, % cfg, settings, exalt-div-updated
+				IniWrite, ninja, % cfg, settings, exalt-div-src
+			}
+		}
+	}
+
+	If changed
+		CurrencyCounter_UpdateExaltRate()
 }
 
 CurrencyCounter_PriceColor(ts)
@@ -2626,22 +2729,18 @@ CurrencyCounter_ShiftCarousel(direction)
 	local
 	global vars, settings
 
-	; Only act when mouse is over a session tab
+	; only act when the mouse is over a session tab
 	check := LLK_HasVal(vars.hwnd.cc_logs, vars.general.cMouse)
 	If !InStr(check, "tab_")
 		Return
 
-	maxIndex := settings.currency_counter.sessions.Count() - settings.currency_counter.visibleCount
+	visibleCount := settings.currency_counter.visibleCount > 0 ? settings.currency_counter.visibleCount : (settings.currency_counter.ssf ? 2 : 4)
+	maxIndex := Max(0, settings.currency_counter.sessions.Count() - visibleCount)
+	idx := Max(0, Min(vars.currency_counter.carousel_index + (direction = "up" ? -1 : 1), maxIndex))
+	If (idx = vars.currency_counter.carousel_index)
+		Return ; already at the edge, skip the redraw
 
-	idx := vars.currency_counter.carousel_index
-	idx += (direction = "up") ? -1 : 1
-	if (idx < 0)
-		vars.currency_counter.carousel_index := 0
-	else if (idx > maxIndex)
-		vars.currency_counter.carousel_index := maxIndex
-	else
-		vars.currency_counter.carousel_index := idx
-
+	vars.currency_counter.carousel_index := idx
 	CurrencyCounter_Logs()
 }
 
@@ -2743,15 +2842,19 @@ CurrencyCounter_RatioEditCommit(raw)
 	{
 		settings.currency_counter.chaos_div := val
 		settings.currency_counter.chaos_div_updated := A_NowUTC
+		settings.currency_counter.chaos_div_src := ""
 		IniWrite, % val, % Currency_Counter_instance.config_path, settings, chaos-div
 		IniWrite, % A_NowUTC, % Currency_Counter_instance.config_path, settings, chaos-div-updated
+		IniDelete, % Currency_Counter_instance.config_path, settings, chaos-div-src
 	}
 	Else
 	{
 		settings.currency_counter.exalt_div := val
 		settings.currency_counter.exalt_div_updated := A_NowUTC
+		settings.currency_counter.exalt_div_src := ""
 		IniWrite, % val, % Currency_Counter_instance.config_path, settings, exalt-div
 		IniWrite, % A_NowUTC, % Currency_Counter_instance.config_path, settings, exalt-div-updated
+		IniDelete, % Currency_Counter_instance.config_path, settings, exalt-div-src
 	}
 	vars.hwnd.cc_ratio_edit := {"main": "", "input": "", "which": ""}
 	CurrencyCounter_UpdateExaltRate()
@@ -2768,431 +2871,246 @@ CurrencyCounter_UpdateExaltRate()
 }
 
 ;================SETTINGS START============
+; HWND naming (all under vars.hwnd.settings):
+;   currency_counter_enable / _ssf / _ninja
+;   currency_counter_<id>_minus / _val / _plus   (id = rows, font, spacing, vis, ninja, pwarn, pstale, rwarn, rstale)
+; Tooltip keys are unchanged ("settings_currency_counter ...", "|" suffixes for minus/val/plus).
+
 Settings_currency_counter()
 {
-    local
-    global vars, settings
+	local
+	global vars, settings
 
-    GUI      := "settings_menu" vars.settings.GUI_toggle
-    x_anchor := vars.settings.x_anchor
+	GUI := "settings_menu" vars.settings.GUI_toggle, x_anchor := vars.settings.x_anchor
+	cButtons := settings.general.cButtons, slop := settings.general.slop
+	cc := settings.currency_counter
 
-    Gui, %GUI%: Add, Text, % "Section x" x_anchor " y" vars.settings.ySelection, % ""
+	Gui, %GUI%: Add, Text, % "Section x" x_anchor " y" vars.settings.ySelection " BackgroundTrans", % ""
 
-    ; ── Enable ────────────────────────────────────────────────
-    Gui, %GUI%: Add, Checkbox, % "xs y+" vars.settings.spacing " Section gSettings_currency_counter2 HWNDhwnd Checked" settings.features.currency_counter
-        , % Lang_Trans("m_cc_enable")
-    vars.hwnd.settings.currency_counter_enable := vars.hwnd.help_tooltips["settings_currency_counter enable"] := hwnd
+	; ── Enable ────────────────────────────────────────────────
+	Gui_Label(GUI, "Section xs ys gSettings_currency_counter2", " " Lang_Trans("m_cc_enable") " "
+		, "settings_currency_counter enable", "hwnd.settings.currency_counter_enable", slop,,, cButtons, settings.features.currency_counter)
 
-    If !settings.features.currency_counter
-    {
-        Gui, %GUI%: Add, Button, % "xp yp wp hp Hidden Default HWNDhwnd gSettings_currency_counter2", OK
-        Return
-    }
+	If !settings.features.currency_counter
+		Return
 
-    ; ── General ───────────────────────────────────────────────
-    Gui, %GUI%: Font, bold underline
-    Gui, %GUI%: Add, Text, % "xs Section y+" vars.settings.spacing, % Lang_Trans("global_general")
-    Gui, %GUI%: Add, Button, % "xp yp wp hp Hidden Default HWNDhwnd gSettings_currency_counter2", OK
-    Gui, %GUI%: Font, norm
-    vars.hwnd.settings.currency_counter_apply := hwnd
+	; ── General ───────────────────────────────────────────────
+	Gui, %GUI%: Font, bold underline
+	Gui, %GUI%: Add, Text, % "xs Section y+" vars.settings.spacing " BackgroundTrans", % Lang_Trans("global_general")
+	Gui, %GUI%: Font, norm
 
-    Gui, %GUI%: Add, Checkbox, % "xs Section gSettings_currency_counter2 HWNDhwnd Checked" settings.currency_counter.ssf
-        , % Lang_Trans("m_cc_ssf")
-    vars.hwnd.settings.currency_counter_ssf := vars.hwnd.help_tooltips["settings_currency_counter ssf"] := hwnd
+	Gui_Label(GUI, "Section xs gSettings_currency_counter2", " " Lang_Trans("m_cc_ssf") " "
+		, "settings_currency_counter ssf", "hwnd.settings.currency_counter_ssf", slop,,, cButtons, cc.ssf)
 
-    ; Max table rows  -/N/+
-    maxRowsDisplay := settings.currency_counter.max_rows > 0 ? settings.currency_counter.max_rows : "auto"
-    Gui, %GUI%: Add, Text, % "xs Section HWNDhwnd y+" vars.settings.spacing/2, % "Max table rows:"
-    vars.hwnd.help_tooltips["settings_currency_counter max rows"] := hwnd
-    Gui, %GUI%: Add, Text, % "ys x+" settings.general.fWidth/2 " Center Border gSettings_currency_counter2 HWNDhwnd w" settings.general.fWidth*2, % "-"
-    vars.hwnd.settings.currency_counter_rowminus := vars.hwnd.help_tooltips["settings_currency_counter max rows|"] := hwnd
-    Gui, %GUI%: Add, Text, % "ys x+" settings.general.fWidth/4 " Center Border gSettings_currency_counter2 HWNDhwnd w" settings.general.fWidth*4, % maxRowsDisplay
-	vars.hwnd.settings.currency_counter_rowcount := vars.hwnd.help_tooltips["settings_currency_counter max rows||"] := hwnd
-    Gui, %GUI%: Add, Text, % "ys x+" settings.general.fWidth/4 " Center Border gSettings_currency_counter2 HWNDhwnd w" settings.general.fWidth*2, % "+"
-    vars.hwnd.settings.currency_counter_rowplus := vars.hwnd.help_tooltips["settings_currency_counter max rows|||"] := hwnd
+	Settings_CC_Stepper(GUI, "Max table rows:", "settings_currency_counter max rows", "rows", (cc.max_rows > 0 ? cc.max_rows : "auto"), 5)
 
-    ; ── UI ────────────────────────────────────────────────────
-    Gui, %GUI%: Font, bold underline
-    Gui, %GUI%: Add, Text, % "xs Section y+" vars.settings.spacing, % Lang_Trans("global_ui")
-    Gui, %GUI%: Font, norm
+	; ── UI ────────────────────────────────────────────────────
+	Gui, %GUI%: Font, bold underline
+	Gui, %GUI%: Add, Text, % "xs Section y+" vars.settings.spacing " BackgroundTrans", % Lang_Trans("global_ui")
+	Gui, %GUI%: Font, norm
 
-    ; Font size  -/N/+
-    Gui, %GUI%: Add, Text, % "xs Section HWNDhwnd", % Lang_Trans("global_font")
-    vars.hwnd.help_tooltips["settings_currency_counter font-size"] := hwnd
-    Gui, %GUI%: Add, Text, % "ys x+" settings.general.fWidth/2 " Center Border gSettings_currency_counter2 HWNDhwnd w" settings.general.fWidth*2, % "-"
-    vars.hwnd.settings.currency_counter_fminus := vars.hwnd.help_tooltips["settings_currency_counter font-size|"] := hwnd
-    Gui, %GUI%: Add, Text, % "ys x+" settings.general.fWidth/4 " Center Border gSettings_currency_counter2 HWNDhwnd w" settings.general.fWidth*3, % settings.currency_counter.fSize
-    vars.hwnd.settings.currency_counter_fsize := vars.hwnd.help_tooltips["settings_currency_counter font-size||"] := hwnd
-    Gui, %GUI%: Add, Text, % "ys x+" settings.general.fWidth/4 " Center Border gSettings_currency_counter2 HWNDhwnd w" settings.general.fWidth*2, % "+"
-    vars.hwnd.settings.currency_counter_fplus := vars.hwnd.help_tooltips["settings_currency_counter font-size|||"] := hwnd
+	Settings_CC_Stepper(GUI, Lang_Trans("global_font"), "settings_currency_counter font-size", "font", cc.fSize)
+	Settings_CC_Stepper(GUI, Lang_Trans("m_cc_tab_spacing"), "settings_currency_counter spacing", "spacing", cc.spacing)
+	Settings_CC_Stepper(GUI, Lang_Trans("m_cc_visible_sessions"), "settings_currency_counter visible sessions", "vis", Settings_CC_Display("visibleCount"))
 
-    ; Tab spacing  -/N/+
-    Gui, %GUI%: Add, Text, % "xs Section HWNDhwnd y+" vars.settings.spacing/2, % Lang_Trans("m_cc_tab_spacing")
-    vars.hwnd.help_tooltips["settings_currency_counter spacing"] := hwnd
-    Gui, %GUI%: Add, Text, % "ys x+" settings.general.fWidth/2 " Center Border gSettings_currency_counter2 HWNDhwnd w" settings.general.fWidth*2, % "-"
-    vars.hwnd.settings.currency_counter_sminus := vars.hwnd.help_tooltips["settings_currency_counter spacing|"] := hwnd
-    Gui, %GUI%: Add, Text, % "ys x+" settings.general.fWidth/4 " Center Border gSettings_currency_counter2 HWNDhwnd w" settings.general.fWidth*3, % settings.currency_counter.spacing
-    vars.hwnd.settings.currency_counter_spacing := vars.hwnd.help_tooltips["settings_currency_counter spacing||"] := hwnd
-    Gui, %GUI%: Add, Text, % "ys x+" settings.general.fWidth/4 " Center Border gSettings_currency_counter2 HWNDhwnd w" settings.general.fWidth*2, % "+"
-    vars.hwnd.settings.currency_counter_splus := vars.hwnd.help_tooltips["settings_currency_counter spacing|||"] := hwnd
+	If cc.ssf
+		Return
 
-    ; Visible sessions  -/N/+ [reset]
-    visDefault := settings.currency_counter.ssf ? 2 : 4
-    visCur := settings.currency_counter.visibleCount > 0 ? settings.currency_counter.visibleCount : visDefault
-    Gui, %GUI%: Add, Text, % "xs Section HWNDhwnd y+" vars.settings.spacing/2, % Lang_Trans("m_cc_visible_sessions")
-    vars.hwnd.help_tooltips["settings_currency_counter visible sessions"] := hwnd
-    Gui, %GUI%: Add, Text, % "ys x+" settings.general.fWidth/2 " Center Border gSettings_currency_counter2 HWNDhwnd w" settings.general.fWidth*2, % "-"
-    vars.hwnd.settings.currency_counter_vminus := vars.hwnd.help_tooltips["settings_currency_counter visible sessions|"] := hwnd
-    Gui, %GUI%: Add, Text, % "ys x+" settings.general.fWidth/4 " Center Border gSettings_currency_counter2 HWNDhwnd w" settings.general.fWidth*3, % visCur
-    vars.hwnd.settings.currency_counter_vcount := vars.hwnd.help_tooltips["settings_currency_counter visible sessions||"] := hwnd
-    Gui, %GUI%: Add, Text, % "ys x+" settings.general.fWidth/4 " Center Border gSettings_currency_counter2 HWNDhwnd w" settings.general.fWidth*2, % "+"
-    vars.hwnd.settings.currency_counter_vplus := vars.hwnd.help_tooltips["settings_currency_counter visible sessions|||"] := hwnd
+	; ── poe.ninja ─────────────────────────────────────────────
+	Gui, %GUI%: Font, bold underline
+	Gui, %GUI%: Add, Text, % "xs Section y+" vars.settings.spacing " BackgroundTrans", % Lang_Trans("m_cc_ninja_section")
+	Gui, %GUI%: Font, norm
 
-    ; ── poe.ninja ─────────────────────────────────────────────
-    If !settings.currency_counter.ssf
-    {
-        Gui, %GUI%: Font, bold underline
-        Gui, %GUI%: Add, Text, % "xs Section y+" vars.settings.spacing, % Lang_Trans("m_cc_ninja_section")
-        Gui, %GUI%: Font, norm
+	If (ninjaEnabled := settings.features.stash)
+		Gui_Label(GUI, "Section xs gSettings_currency_counter2", " " Lang_Trans("m_cc_ninja_prices") " "
+			, "settings_currency_counter ninja", "hwnd.settings.currency_counter_ninja", slop,,, cButtons, cc.ninja_prices)
+	Else
+		Gui_Label(GUI, "Section xs", " " Lang_Trans("m_cc_ninja_prices") " "
+			, "settings_currency_counter ninja", "hwnd.settings.currency_counter_ninja", slop,,, cButtons, [0, "808080"])
 
-        ninjaEnabled := settings.features.stash
-        If ninjaEnabled
-        {
-            Gui, %GUI%: Add, Checkbox, % "xs Section gSettings_currency_counter2 HWNDhwnd Checked" settings.currency_counter.ninja_prices
-                , % Lang_Trans("m_cc_ninja_prices")
-            vars.hwnd.settings.currency_counter_ninja := vars.hwnd.help_tooltips["settings_currency_counter ninja"] := hwnd
-        }
-        Else
-        {
-            Gui, %GUI%: Add, Checkbox, % "xs Section Disabled HWNDhwnd Checked" settings.currency_counter.ninja_prices, % ""
-            vars.hwnd.settings.currency_counter_ninja := hwnd
-            Gui, %GUI%: Add, Text, % "ys x+0 c808080 HWNDhwnd", % Lang_Trans("m_cc_ninja_prices")
-            vars.hwnd.help_tooltips["settings_currency_counter ninja"] := hwnd
-        }
+	If (cc.ninja_prices && ninjaEnabled)
+		Settings_CC_Stepper(GUI, Lang_Trans("m_cc_ninja_stale"), "settings_currency_counter ninja stale", "ninja", cc.ninja_stale_hours)
 
-        If (settings.currency_counter.ninja_prices && ninjaEnabled)
-        {
-            Gui, %GUI%: Add, Text, % "xs Section HWNDhwnd y+" vars.settings.spacing/2, % Lang_Trans("m_cc_ninja_stale")
-            vars.hwnd.help_tooltips["settings_currency_counter ninja stale"] := hwnd
-            Gui, %GUI%: Add, Text, % "ys x+" settings.general.fWidth/2 " Center Border gSettings_currency_counter2 HWNDhwnd w" settings.general.fWidth*2, % "-"
-            vars.hwnd.settings.currency_counter_nminus := vars.hwnd.help_tooltips["settings_currency_counter ninja stale|"] := hwnd
-            Gui, %GUI%: Add, Text, % "ys x+" settings.general.fWidth/4 " Center Border gSettings_currency_counter2 HWNDhwnd w" settings.general.fWidth*3, % settings.currency_counter.ninja_stale_hours
-            vars.hwnd.settings.currency_counter_nstale := vars.hwnd.help_tooltips["settings_currency_counter ninja stale||"] := hwnd
-            Gui, %GUI%: Add, Text, % "ys x+" settings.general.fWidth/4 " Center Border gSettings_currency_counter2 HWNDhwnd w" settings.general.fWidth*2, % "+"
-            vars.hwnd.settings.currency_counter_nplus := vars.hwnd.help_tooltips["settings_currency_counter ninja stale|||"] := hwnd
-        }
+	; ── Price age thresholds ──────────────────────────────────
+	Gui, %GUI%: Font, bold underline
+	Gui, %GUI%: Add, Text, % "xs Section y+" vars.settings.spacing " BackgroundTrans", % Lang_Trans("m_cc_price_age")
+	Gui, %GUI%: Font, norm
+	Settings_CC_Stepper(GUI, Lang_Trans("m_cc_age_warn"), "settings_currency_counter price warn", "pwarn", cc.price_warn_hours)
+	Settings_CC_Stepper(GUI, Lang_Trans("m_cc_age_stale"), "settings_currency_counter price stale", "pstale", cc.price_stale_hours, 3, 1)
 
-        ; ── Price age thresholds ───────────────────────────────
-        Gui, %GUI%: Font, bold underline
-        Gui, %GUI%: Add, Text, % "xs Section y+" vars.settings.spacing, % Lang_Trans("m_cc_price_age")
-        Gui, %GUI%: Font, norm
+	; ── Exchange rate age thresholds ──────────────────────────
+	Gui, %GUI%: Font, bold underline
+	Gui, %GUI%: Add, Text, % "xs Section y+" vars.settings.spacing " BackgroundTrans", % Lang_Trans("m_cc_rate_age")
+	Gui, %GUI%: Font, norm
+	Settings_CC_Stepper(GUI, Lang_Trans("m_cc_age_warn"), "settings_currency_counter rate warn", "rwarn", cc.rate_warn_hours)
+	Settings_CC_Stepper(GUI, Lang_Trans("m_cc_age_stale"), "settings_currency_counter rate stale", "rstale", cc.rate_stale_hours, 3, 1)
+}
 
-        Gui, %GUI%: Add, Text, % "xs Section HWNDhwnd", % Lang_Trans("m_cc_age_warn")
-        vars.hwnd.help_tooltips["settings_currency_counter price warn"] := hwnd
-        Gui, %GUI%: Add, Text, % "ys x+" settings.general.fWidth/2 " Center Border gSettings_currency_counter2 HWNDhwnd w" settings.general.fWidth*2, % "-"
-        vars.hwnd.settings.currency_counter_pwarnminus := vars.hwnd.help_tooltips["settings_currency_counter price warn|"] := hwnd
-        Gui, %GUI%: Add, Text, % "ys x+" settings.general.fWidth/4 " Center Border gSettings_currency_counter2 HWNDhwnd w" settings.general.fWidth*3, % settings.currency_counter.price_warn_hours
-        vars.hwnd.settings.currency_counter_pwarn := vars.hwnd.help_tooltips["settings_currency_counter price warn||"] := hwnd
-        Gui, %GUI%: Add, Text, % "ys x+" settings.general.fWidth/4 " Center Border gSettings_currency_counter2 HWNDhwnd w" settings.general.fWidth*2, % "+"
-        vars.hwnd.settings.currency_counter_pwarnplus := vars.hwnd.help_tooltips["settings_currency_counter price warn|||"] := hwnd
+; One "label  -  N  +" row, same look as the font-size rows in Settings_general().
+; tip = base tooltip key; the minus/value/plus controls get tip "|", "||", "|||".
+Settings_CC_Stepper(GUI, label, tip, id, value, wValueChars := 3, sameRow := 0)
+{
+	local
+	global vars, settings
 
-        Gui, %GUI%: Add, Text, % "xs Section HWNDhwnd y+" vars.settings.spacing/2, % Lang_Trans("m_cc_age_stale")
-        vars.hwnd.help_tooltips["settings_currency_counter price stale"] := hwnd
-        Gui, %GUI%: Add, Text, % "ys x+" settings.general.fWidth/2 " Center Border gSettings_currency_counter2 HWNDhwnd w" settings.general.fWidth*2, % "-"
-        vars.hwnd.settings.currency_counter_pstaleminus := vars.hwnd.help_tooltips["settings_currency_counter price stale|"] := hwnd
-        Gui, %GUI%: Add, Text, % "ys x+" settings.general.fWidth/4 " Center Border gSettings_currency_counter2 HWNDhwnd w" settings.general.fWidth*3, % settings.currency_counter.price_stale_hours
-        vars.hwnd.settings.currency_counter_pstale := vars.hwnd.help_tooltips["settings_currency_counter price stale||"] := hwnd
-        Gui, %GUI%: Add, Text, % "ys x+" settings.general.fWidth/4 " Center Border gSettings_currency_counter2 HWNDhwnd w" settings.general.fWidth*2, % "+"
-        vars.hwnd.settings.currency_counter_pstaleplus := vars.hwnd.help_tooltips["settings_currency_counter price stale|||"] := hwnd
+	cButtons := settings.general.cButtons, fWidth := settings.general.fWidth, fHeight := settings.general.fHeight
+	Gui_Label(GUI, (sameRow ? "ys x+" fWidth : "Section xs") " gSettings_currency_counter2", " " label " ", tip,, [1, 0, 1, 0])
+	Gui_Label(GUI, "ys x+0 w" fHeight " Center gSettings_currency_counter2", "-", tip "|", "hwnd.settings.currency_counter_" id "_minus",,,, cButtons)
+	Gui_Label(GUI, "ys x+0 w" wValueChars * fWidth " Center gSettings_currency_counter2", value, tip "||", "hwnd.settings.currency_counter_" id "_val",,,, cButtons)
+	Gui_Label(GUI, "ys x+0 w" fHeight " Center gSettings_currency_counter2", "+", tip "|||", "hwnd.settings.currency_counter_" id "_plus", [0, 1, 0, 1],,, cButtons)
+}
 
-        ; ── Exchange rate age thresholds ───────────────────────
-        Gui, %GUI%: Font, bold underline
-        Gui, %GUI%: Add, Text, % "xs Section y+" vars.settings.spacing, % Lang_Trans("m_cc_rate_age")
-        Gui, %GUI%: Font, norm
+; ── helpers for the stepper logic ─────────────────────────────
+Settings_CC_Bounds(key, ByRef lo, ByRef hi)
+{
+	local
+	global settings
+	cc := settings.currency_counter
 
-        Gui, %GUI%: Add, Text, % "xs Section HWNDhwnd", % Lang_Trans("m_cc_age_warn")
-        vars.hwnd.help_tooltips["settings_currency_counter rate warn"] := hwnd
-        Gui, %GUI%: Add, Text, % "ys x+" settings.general.fWidth/2 " Center Border gSettings_currency_counter2 HWNDhwnd w" settings.general.fWidth*2, % "-"
-        vars.hwnd.settings.currency_counter_rwarnminus := vars.hwnd.help_tooltips["settings_currency_counter rate warn|"] := hwnd
-        Gui, %GUI%: Add, Text, % "ys x+" settings.general.fWidth/4 " Center Border gSettings_currency_counter2 HWNDhwnd w" settings.general.fWidth*3, % settings.currency_counter.rate_warn_hours
-        vars.hwnd.settings.currency_counter_rwarn := vars.hwnd.help_tooltips["settings_currency_counter rate warn||"] := hwnd
-        Gui, %GUI%: Add, Text, % "ys x+" settings.general.fWidth/4 " Center Border gSettings_currency_counter2 HWNDhwnd w" settings.general.fWidth*2, % "+"
-        vars.hwnd.settings.currency_counter_rwarnplus := vars.hwnd.help_tooltips["settings_currency_counter rate warn|||"] := hwnd
+	Switch key
+	{
+		Case "max_rows":
+			lo := 0, hi := 999
+		Case "fSize":
+			lo := 6, hi := 99
+		Case "spacing":
+			lo := 2, hi := 20
+		Case "visibleCount":
+			lo := 1, hi := 8
+		Case "ninja_stale_hours":
+			lo := 1, hi := 24
+		Case "price_warn_hours":
+			lo := 1, hi := cc.price_stale_hours - 1
+		Case "price_stale_hours":
+			lo := cc.price_warn_hours + 1, hi := 999
+		Case "rate_warn_hours":
+			lo := 1, hi := cc.rate_stale_hours - 1
+		Case "rate_stale_hours":
+			lo := cc.rate_warn_hours + 1, hi := 999
+		Default:
+			lo := 0, hi := 999
+	}
+}
 
-        Gui, %GUI%: Add, Text, % "xs Section HWNDhwnd y+" vars.settings.spacing/2, % Lang_Trans("m_cc_age_stale")
-        vars.hwnd.help_tooltips["settings_currency_counter rate stale"] := hwnd
-        Gui, %GUI%: Add, Text, % "ys x+" settings.general.fWidth/2 " Center Border gSettings_currency_counter2 HWNDhwnd w" settings.general.fWidth*2, % "-"
-        vars.hwnd.settings.currency_counter_rstaleminus := vars.hwnd.help_tooltips["settings_currency_counter rate stale|"] := hwnd
-        Gui, %GUI%: Add, Text, % "ys x+" settings.general.fWidth/4 " Center Border gSettings_currency_counter2 HWNDhwnd w" settings.general.fWidth*3, % settings.currency_counter.rate_stale_hours
-        vars.hwnd.settings.currency_counter_rstale := vars.hwnd.help_tooltips["settings_currency_counter rate stale||"] := hwnd
-        Gui, %GUI%: Add, Text, % "ys x+" settings.general.fWidth/4 " Center Border gSettings_currency_counter2 HWNDhwnd w" settings.general.fWidth*2, % "+"
-        vars.hwnd.settings.currency_counter_rstaleplus := vars.hwnd.help_tooltips["settings_currency_counter rate stale|||"] := hwnd
-    }
+Settings_CC_Default(key)
+{
+	local
+	global settings
+
+	Switch key
+	{
+		Case "max_rows", "visibleCount":
+			Return 0 ; auto
+		Case "fSize":
+			Return settings.general.fSize
+		Case "spacing":
+			Return 10
+		Case "ninja_stale_hours", "price_warn_hours", "rate_warn_hours":
+			Return 3
+		Case "price_stale_hours", "rate_stale_hours":
+			Return 6
+	}
+	Return 0
+}
+
+Settings_CC_Display(key)
+{
+	local
+	global settings
+	cc := settings.currency_counter
+
+	If (key = "max_rows")
+		Return (cc.max_rows > 0 ? cc.max_rows : "auto")
+	If (key = "visibleCount")
+		Return (cc.visibleCount > 0 ? cc.visibleCount : (cc.ssf ? 2 : 4))
+	Return cc[key]
+}
+
+Settings_CC_Refresh()
+{
+	local
+	global vars, Currency_Counter_instance
+
+	Currency_Counter_instance.Settings_Open("refresh")
+	If WinExist("ahk_id " vars.hwnd.cc_logs.main)
+		CurrencyCounter_Logs()
 }
 
 Settings_currency_counter2(cHWND)
 {
-    local
-    global vars, settings, Currency_Counter_instance
+	local
+	global vars, settings, Currency_Counter_instance
 
-    If (cHWND = vars.hwnd.settings.currency_counter_enable)
+	h := vars.hwnd.settings, cc := settings.currency_counter, cfg := Currency_Counter_instance.config_path
+
+	; ── Toggles (Gui_Label has no checked state -> flip the stored value) ──
+	If (cHWND = h.currency_counter_enable)
 	{
-	    IniWrite, % (settings.features.currency_counter := LLK_ControlGet(cHWND))
-	        , % Currency_Counter_instance.config_path, settings, enabled
-	    If settings.features.currency_counter
-		{
-	        CurrencyCounter_DrawBar()
-		}
-	    Else
-	        LLK_Overlay(vars.hwnd.currency_counter.main, "destroy")
-		;Settings_menu("addons_" Currency_Counter_instance.name) ; fallback
-	    Currency_Counter_instance.Settings_menu("refresh")
-	    Return
+		KeyWait, LButton
+		IniWrite, % (settings.features.currency_counter := !settings.features.currency_counter), % cfg, settings, enabled
+		If settings.features.currency_counter
+			CurrencyCounter_DrawBar()
+		Else
+			LLK_Overlay(vars.hwnd.currency_counter.main, "destroy")
+		Currency_Counter_instance.Settings_Open("refresh")
+		Return
 	}
-    If (cHWND = vars.hwnd.settings.currency_counter_ssf)
-    {
-        IniWrite, % (settings.currency_counter.ssf := LLK_ControlGet(cHWND))
-            , % Currency_Counter_instance.config_path, settings, ssf mode
-        Currency_Counter_instance.Settings_menu("refresh")
-        If WinExist("ahk_id " vars.hwnd.cc_logs.main)
-            CurrencyCounter_Logs()
-        Return
-    }
-    If (cHWND = vars.hwnd.settings.currency_counter_rowminus) || (cHWND = vars.hwnd.settings.currency_counter_rowplus)
-    {
-        delta := (cHWND = vars.hwnd.settings.currency_counter_rowplus) ? 1 : -1
-        While GetKeyState("LButton", "P")
-        {
-            settings.currency_counter.max_rows := Max(0, settings.currency_counter.max_rows + delta)
-            GuiControl, Text, % vars.hwnd.settings.currency_counter_rowcount
-                , % (settings.currency_counter.max_rows > 0 ? settings.currency_counter.max_rows : "auto")
-            Sleep, 150
-        }
-        If (settings.currency_counter.max_rows > 0)
-            IniWrite, % settings.currency_counter.max_rows, % Currency_Counter_instance.config_path, settings, max-rows
-        Else
-            IniDelete, % Currency_Counter_instance.config_path, settings, max-rows
-        Currency_Counter_instance.Settings_menu("refresh")
-        If WinExist("ahk_id " vars.hwnd.cc_logs.main)
-            CurrencyCounter_Logs()
-        Return
-    }
-    If (cHWND = vars.hwnd.settings.currency_counter_fminus) || (cHWND = vars.hwnd.settings.currency_counter_fplus)
-    {
-        delta := (cHWND = vars.hwnd.settings.currency_counter_fplus) ? 1 : -1
-        While GetKeyState("LButton", "P")
-        {
-            settings.currency_counter.fSize := Max(6, settings.currency_counter.fSize + delta)
-            GuiControl, Text, % vars.hwnd.settings.currency_counter_fsize, % settings.currency_counter.fSize
-            Sleep, 150
-        }
-        LLK_FontDimensions(settings.currency_counter.fSize, h, w)
-        settings.currency_counter.fHeight := h, settings.currency_counter.fWidth := w
-        IniWrite, % settings.currency_counter.fSize, % Currency_Counter_instance.config_path, settings, font-size
-        Currency_Counter_instance.Settings_menu("refresh")
-        If WinExist("ahk_id " vars.hwnd.cc_logs.main)
-            CurrencyCounter_Logs()
-        Return
-    }
-    If (cHWND = vars.hwnd.settings.currency_counter_sminus) || (cHWND = vars.hwnd.settings.currency_counter_splus)
-    {
-        delta := (cHWND = vars.hwnd.settings.currency_counter_splus) ? 1 : -1
-        While GetKeyState("LButton", "P")
-        {
-            settings.currency_counter.spacing := Max(2, Min(20, settings.currency_counter.spacing + delta))
-            GuiControl, Text, % vars.hwnd.settings.currency_counter_spacing, % settings.currency_counter.spacing
-            Sleep, 150
-        }
-        IniWrite, % settings.currency_counter.spacing, % Currency_Counter_instance.config_path, settings, spacing
-        Currency_Counter_instance.Settings_menu("refresh")
-        If WinExist("ahk_id " vars.hwnd.cc_logs.main)
-            CurrencyCounter_Logs()
-        Return
-    }
-    If (cHWND = vars.hwnd.settings.currency_counter_vminus) || (cHWND = vars.hwnd.settings.currency_counter_vplus)
-    {
-        visDefault := settings.currency_counter.ssf ? 2 : 4
-        delta := (cHWND = vars.hwnd.settings.currency_counter_vplus) ? 1 : -1
-        While GetKeyState("LButton", "P")
-        {
-            cur := settings.currency_counter.visibleCount > 0 ? settings.currency_counter.visibleCount : visDefault
-            settings.currency_counter.visibleCount := Max(1, Min(8, cur + delta))
-            GuiControl, Text, % vars.hwnd.settings.currency_counter_vcount, % settings.currency_counter.visibleCount
-            Sleep, 150
-        }
-        IniWrite, % settings.currency_counter.visibleCount, % Currency_Counter_instance.config_path, settings, visible-sessions
-        Currency_Counter_instance.Settings_menu("refresh")
-        If WinExist("ahk_id " vars.hwnd.cc_logs.main)
-            CurrencyCounter_Logs()
-        Return
-    }
-    If (cHWND = vars.hwnd.settings.currency_counter_nminus) || (cHWND = vars.hwnd.settings.currency_counter_nplus)
-    {
-        delta := (cHWND = vars.hwnd.settings.currency_counter_nplus) ? 1 : -1
-        While GetKeyState("LButton", "P")
-        {
-            settings.currency_counter.ninja_stale_hours := Max(1, Min(24, settings.currency_counter.ninja_stale_hours + delta))
-            GuiControl, Text, % vars.hwnd.settings.currency_counter_nstale, % settings.currency_counter.ninja_stale_hours
-            Sleep, 150
-        }
-        IniWrite, % settings.currency_counter.ninja_stale_hours, % Currency_Counter_instance.config_path, settings, ninja-stale-hours
-        Currency_Counter_instance.Settings_menu("refresh")
-        If WinExist("ahk_id " vars.hwnd.cc_logs.main)
-            CurrencyCounter_Logs()
-        Return
-    }
-    If (cHWND = vars.hwnd.settings.currency_counter_ninja)
-    {
-        IniWrite, % (settings.currency_counter.ninja_prices := LLK_ControlGet(cHWND))
-            , % Currency_Counter_instance.config_path, settings, ninja-prices
-        Currency_Counter_instance.Settings_menu("refresh")
-        If WinExist("ahk_id " vars.hwnd.cc_logs.main)
-            CurrencyCounter_Logs()
-        Return
-    }
+	If (cHWND = h.currency_counter_ssf)
+	{
+		KeyWait, LButton
+		IniWrite, % (cc.ssf := !cc.ssf), % cfg, settings, ssf mode
+		Settings_CC_Refresh()
+		Return
+	}
+	If (cHWND = h.currency_counter_ninja)
+	{
+		KeyWait, LButton
+		IniWrite, % (cc.ninja_prices := !cc.ninja_prices), % cfg, settings, ninja-prices
+		Settings_CC_Refresh()
+		Return
+	}
 
-	; ── Reset on middle‑click ─────────────────────────────────
-	If (cHWND = vars.hwnd.settings.currency_counter_rowcount) {
-	    ; default = 0  (auto)
-	    settings.currency_counter.max_rows := 0
-	    IniDelete, % Currency_Counter_instance.config_path, settings, max-rows
-	    Currency_Counter_instance.Settings_menu("refresh")
-	    If WinExist("ahk_id " vars.hwnd.cc_logs.main)
-	        CurrencyCounter_Logs()
-	    Return
+	; ── -/N/+ steppers: hold -/+ to repeat, click the value to reset to default ──
+	defs := [["max_rows", "max-rows", "rows"], ["fSize", "font-size", "font"], ["spacing", "spacing", "spacing"]
+		, ["visibleCount", "visible-sessions", "vis"], ["ninja_stale_hours", "ninja-stale-hours", "ninja"]
+		, ["price_warn_hours", "price-warn-hours", "pwarn"], ["price_stale_hours", "price-stale-hours", "pstale"]
+		, ["rate_warn_hours", "rate-warn-hours", "rwarn"], ["rate_stale_hours", "rate-stale-hours", "rstale"]]
+
+	For index, def in defs
+	{
+		key := def.1, ini := def.2, id := "currency_counter_" def.3
+		hMinus := h[id "_minus"], hPlus := h[id "_plus"], hVal := h[id "_val"]
+
+		If (cHWND = hMinus) || (cHWND = hPlus)
+		{
+			delta := (cHWND = hPlus) ? 1 : -1
+			While GetKeyState("LButton", "P")
+			{
+				Settings_CC_Bounds(key, lo, hi)
+				cur := (key = "visibleCount" && !(cc.visibleCount > 0)) ? Settings_CC_Display(key) : cc[key]
+				cc[key] := Max(lo, Min(hi, cur + delta))
+				GuiControl, Text, % hVal, % Settings_CC_Display(key)
+				Sleep, 150
+			}
+		}
+		Else If (cHWND = hVal)
+		{
+			KeyWait, LButton
+			cc[key] := Settings_CC_Default(key)
+		}
+		Else Continue
+
+		If (key = "fSize")
+		{
+			LLK_FontDimensions(cc.fSize, fH, fW)
+			cc.fHeight := fH, cc.fWidth := fW
+		}
+		If InStr("max_rows,visibleCount", key) && !(cc[key] > 0)
+			IniDelete, % cfg, settings, % ini
+		Else
+			IniWrite, % cc[key], % cfg, settings, % ini
+		Settings_CC_Refresh()
+		Return
 	}
-	If (cHWND = vars.hwnd.settings.currency_counter_fsize) {
-	    ; default = general font size
-	    settings.currency_counter.fSize := settings.general.fSize
-	    IniWrite, % settings.currency_counter.fSize, % Currency_Counter_instance.config_path, settings, font-size
-	    LLK_FontDimensions(settings.currency_counter.fSize, h, w)
-	    settings.currency_counter.fHeight := h, settings.currency_counter.fWidth := w
-	    Currency_Counter_instance.Settings_menu("refresh")
-	    If WinExist("ahk_id " vars.hwnd.cc_logs.main)
-	        CurrencyCounter_Logs()
-	    Return
-	}
-	If (cHWND = vars.hwnd.settings.currency_counter_spacing) {
-	    ; default = 10
-	    settings.currency_counter.spacing := 10
-	    IniWrite, % settings.currency_counter.spacing, % Currency_Counter_instance.config_path, settings, spacing
-	    Currency_Counter_instance.Settings_menu("refresh")
-	    If WinExist("ahk_id " vars.hwnd.cc_logs.main)
-	        CurrencyCounter_Logs()
-	    Return
-	}
-	If (cHWND = vars.hwnd.settings.currency_counter_vcount) {
-	    ; default = 0  (auto: 2 for SSF, 4 for trade)
-	    settings.currency_counter.visibleCount := 0
-	    IniDelete, % Currency_Counter_instance.config_path, settings, visible-sessions
-	    Currency_Counter_instance.Settings_menu("refresh")
-	    If WinExist("ahk_id " vars.hwnd.cc_logs.main)
-	        CurrencyCounter_Logs()
-	    Return
-	}
-	If (cHWND = vars.hwnd.settings.currency_counter_nstale) {
-	    settings.currency_counter.ninja_stale_hours := 3
-	    IniWrite, % settings.currency_counter.ninja_stale_hours, % Currency_Counter_instance.config_path, settings, ninja-stale-hours
-	    Currency_Counter_instance.Settings_menu("refresh")
-	    If WinExist("ahk_id " vars.hwnd.cc_logs.main)
-	        CurrencyCounter_Logs()
-	    Return
-	}
-    If (cHWND = vars.hwnd.settings.currency_counter_pwarnminus) || (cHWND = vars.hwnd.settings.currency_counter_pwarnplus)
-    {
-        delta := (cHWND = vars.hwnd.settings.currency_counter_pwarnplus) ? 1 : -1
-        While GetKeyState("LButton", "P")
-        {
-            settings.currency_counter.price_warn_hours := Max(1, Min(settings.currency_counter.price_stale_hours - 1, settings.currency_counter.price_warn_hours + delta))
-            GuiControl, Text, % vars.hwnd.settings.currency_counter_pwarn, % settings.currency_counter.price_warn_hours
-            Sleep, 150
-        }
-        IniWrite, % settings.currency_counter.price_warn_hours, % Currency_Counter_instance.config_path, settings, price-warn-hours
-        Currency_Counter_instance.Settings_menu("refresh")
-        If WinExist("ahk_id " vars.hwnd.cc_logs.main)
-            CurrencyCounter_Logs()
-        Return
-    }
-    If (cHWND = vars.hwnd.settings.currency_counter_pwarn)
-    {
-        settings.currency_counter.price_warn_hours := 6
-        IniWrite, % settings.currency_counter.price_warn_hours, % Currency_Counter_instance.config_path, settings, price-warn-hours
-        Currency_Counter_instance.Settings_menu("refresh")
-        If WinExist("ahk_id " vars.hwnd.cc_logs.main)
-            CurrencyCounter_Logs()
-        Return
-    }
-    If (cHWND = vars.hwnd.settings.currency_counter_pstaleminus) || (cHWND = vars.hwnd.settings.currency_counter_pstaleplus)
-    {
-        delta := (cHWND = vars.hwnd.settings.currency_counter_pstaleplus) ? 1 : -1
-        While GetKeyState("LButton", "P")
-        {
-            settings.currency_counter.price_stale_hours := Max(settings.currency_counter.price_warn_hours + 1, settings.currency_counter.price_stale_hours + delta)
-            GuiControl, Text, % vars.hwnd.settings.currency_counter_pstale, % settings.currency_counter.price_stale_hours
-            Sleep, 150
-        }
-        IniWrite, % settings.currency_counter.price_stale_hours, % Currency_Counter_instance.config_path, settings, price-stale-hours
-        Currency_Counter_instance.Settings_menu("refresh")
-        If WinExist("ahk_id " vars.hwnd.cc_logs.main)
-            CurrencyCounter_Logs()
-        Return
-    }
-    If (cHWND = vars.hwnd.settings.currency_counter_pstale)
-    {
-        settings.currency_counter.price_stale_hours := 12
-        IniWrite, % settings.currency_counter.price_stale_hours, % Currency_Counter_instance.config_path, settings, price-stale-hours
-        Currency_Counter_instance.Settings_menu("refresh")
-        If WinExist("ahk_id " vars.hwnd.cc_logs.main)
-            CurrencyCounter_Logs()
-        Return
-    }
-    If (cHWND = vars.hwnd.settings.currency_counter_rwarnminus) || (cHWND = vars.hwnd.settings.currency_counter_rwarnplus)
-    {
-        delta := (cHWND = vars.hwnd.settings.currency_counter_rwarnplus) ? 1 : -1
-        While GetKeyState("LButton", "P")
-        {
-            settings.currency_counter.rate_warn_hours := Max(1, Min(settings.currency_counter.rate_stale_hours - 1, settings.currency_counter.rate_warn_hours + delta))
-            GuiControl, Text, % vars.hwnd.settings.currency_counter_rwarn, % settings.currency_counter.rate_warn_hours
-            Sleep, 150
-        }
-        IniWrite, % settings.currency_counter.rate_warn_hours, % Currency_Counter_instance.config_path, settings, rate-warn-hours
-        Currency_Counter_instance.Settings_menu("refresh")
-        If WinExist("ahk_id " vars.hwnd.cc_logs.main)
-            CurrencyCounter_Logs()
-        Return
-    }
-    If (cHWND = vars.hwnd.settings.currency_counter_rwarn)
-    {
-        settings.currency_counter.rate_warn_hours := 6
-        IniWrite, % settings.currency_counter.rate_warn_hours, % Currency_Counter_instance.config_path, settings, rate-warn-hours
-        Currency_Counter_instance.Settings_menu("refresh")
-        If WinExist("ahk_id " vars.hwnd.cc_logs.main)
-            CurrencyCounter_Logs()
-        Return
-    }
-    If (cHWND = vars.hwnd.settings.currency_counter_rstaleminus) || (cHWND = vars.hwnd.settings.currency_counter_rstaleplus)
-    {
-        delta := (cHWND = vars.hwnd.settings.currency_counter_rstaleplus) ? 1 : -1
-        While GetKeyState("LButton", "P")
-        {
-            settings.currency_counter.rate_stale_hours := Max(settings.currency_counter.rate_warn_hours + 1, settings.currency_counter.rate_stale_hours + delta)
-            GuiControl, Text, % vars.hwnd.settings.currency_counter_rstale, % settings.currency_counter.rate_stale_hours
-            Sleep, 150
-        }
-        IniWrite, % settings.currency_counter.rate_stale_hours, % Currency_Counter_instance.config_path, settings, rate-stale-hours
-        Currency_Counter_instance.Settings_menu("refresh")
-        If WinExist("ahk_id " vars.hwnd.cc_logs.main)
-            CurrencyCounter_Logs()
-        Return
-    }
-    If (cHWND = vars.hwnd.settings.currency_counter_rstale)
-    {
-        settings.currency_counter.rate_stale_hours := 12
-        IniWrite, % settings.currency_counter.rate_stale_hours, % Currency_Counter_instance.config_path, settings, rate-stale-hours
-        Currency_Counter_instance.Settings_menu("refresh")
-        If WinExist("ahk_id " vars.hwnd.cc_logs.main)
-            CurrencyCounter_Logs()
-        Return
-    }
 }
 ;================SETTINGS END============

@@ -5,12 +5,12 @@
 		ms_currency-counter		=	"currency counter"
 
 ;## these strings are displayed/required in the "currency-counter" section of the settings menu
-		m_cc_enable				=	"enable the currency counter feature"
-		m_cc_ssf				=	"SSF (Solo Self-Found) mode"
+		m_cc_enable				=	"enable"
+		m_cc_ssf				=	"SSF mode"
 		m_cc_tab_spacing		=	"tab spacing:"
 		m_cc_visible_sessions	=	"visible sessions:"
 		m_cc_ninja_section		=	"poe.ninja:"
-		m_cc_ninja_prices		=	"use poe.ninja prices as fallback"
+		m_cc_ninja_prices		=	"use fallback"
 		m_cc_ninja_stale		=	"use ninja price after (h):"
 
 ;## currency counter viewer window strings

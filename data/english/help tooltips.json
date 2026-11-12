@@ -4,7 +4,8 @@
       "tracks how many of each currency you use during a session",
       "It tracks right/left clicks on currency and items to count how many you use",
       "It accepts custom entries as well",
-      "It also allows you to set manual prices for currencies and items, and calculates the total value of your used currency based on that"
+      "It also allows you to set manual prices for currencies and items, and calculates the total value of your used currency based on that",
+      "this button allows you to disable the bar without restarting the app"
     ],
     "currency_counter ssf": [
       "solo self-found mode: hides the price and total columns",
